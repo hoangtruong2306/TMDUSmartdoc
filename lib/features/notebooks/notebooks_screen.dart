@@ -25,9 +25,6 @@ const _nbIcons = <(String, IconData, String)>[
 IconData _iconFromKey(String key) =>
     _nbIcons.firstWhere((e) => e.$1 == key, orElse: () => _nbIcons.first).$2;
 
-String _iconLabel(String key) =>
-    _nbIcons.firstWhere((e) => e.$1 == key, orElse: () => _nbIcons.first).$3;
-
 class NotebooksScreen extends StatefulWidget {
   const NotebooksScreen({super.key});
 
@@ -36,12 +33,78 @@ class NotebooksScreen extends StatefulWidget {
 }
 
 class _NotebooksScreenState extends State<NotebooksScreen> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedIds = {};
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<NotebookProvider>().loadNotebooks();
     });
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+        if (_selectedIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedIds.add(id);
+        _isSelectionMode = true;
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedIds.clear();
+      _isSelectionMode = false;
+    });
+  }
+
+  Future<void> _confirmDeleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
+        title: const Text('Xoá nhiều notebook?'),
+        content: Text(
+          'Bạn có chắc muốn xoá ${_selectedIds.length} notebook đã chọn?',
+          style: Theme.of(ctx).textTheme.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Huỷ'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Xoá'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed == true) {
+      final provider = context.read<NotebookProvider>();
+      final success = await provider.deleteNotebooks(_selectedIds.toList());
+      if (mounted && success) {
+        _clearSelection();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Xóa thất bại'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showCreateDialog() async {
@@ -55,150 +118,154 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
 
     await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
-          title: const Text('Tạo notebook mới'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'Tên notebook...',
-                    border: OutlineInputBorder(borderRadius: AppRadius.control),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppRadius.control,
-                      borderSide: BorderSide(color: AppColors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppRadius.control,
-                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                    ),
-                    filled: true,
-                    fillColor: AppColors.surfaceVariant,
-                    contentPadding: AppSpacing.inputPadding,
-                  ),
-                ),
-                AppSpacing.vMd,
-                Text('Màu sắc', style: Theme.of(ctx).textTheme.labelMedium),
-                AppSpacing.vSm,
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: colors.map((hex) {
-                    final color = _parseColor(hex);
-                    final isSelected = hex == selectedColor;
-                    return GestureDetector(
-                      onTap: () => setModalState(() => selectedColor = hex),
-                      child: AnimatedContainer(
-                        duration: AppMotion.fast,
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? AppColors.textPrimary : Colors.transparent,
-                            width: 2.5,
-                          ),
-                          boxShadow: isSelected ? AppShadows.card : null,
-                        ),
-                        child: isSelected
-                            ? const Icon(Icons.check, color: Colors.white, size: 18)
-                            : null,
+      builder: (ctx) {
+        void submit() async {
+          final name = nameController.text.trim();
+          if (name.isEmpty) return;
+          final provider = context.read<NotebookProvider>();
+          final messenger = ScaffoldMessenger.of(context);
+          Navigator.of(ctx).pop();
+          final nb = await provider.createNotebook(name, selectedColor, selectedIcon);
+          if (nb == null && context.mounted) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: const Text('Tạo notebook thất bại'),
+                backgroundColor: AppColors.error,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
+                margin: const EdgeInsets.all(AppSpacing.md),
+              ),
+            );
+          }
+        }
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
+            title: const Text('Tạo notebook mới'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    onSubmitted: (_) => submit(),
+                    decoration: InputDecoration(
+                      hintText: 'Tên notebook...',
+                      border: OutlineInputBorder(borderRadius: AppRadius.control),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: AppRadius.control,
+                        borderSide: BorderSide(color: AppColors.border),
                       ),
-                    );
-                  }).toList(),
-                ),
-                AppSpacing.vMd,
-                Text('Biểu tượng', style: Theme.of(ctx).textTheme.labelMedium),
-                AppSpacing.vSm,
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _nbIcons.map((entry) {
-                    final isSelected = entry.$1 == selectedIcon;
-                    final accent = _parseColor(selectedColor);
-                    return GestureDetector(
-                      onTap: () => setModalState(() => selectedIcon = entry.$1),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedContainer(
-                            duration: AppMotion.fast,
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: isSelected ? accent : AppColors.surfaceVariant,
-                              borderRadius: AppRadius.control,
-                              border: Border.all(
-                                color: isSelected ? accent : AppColors.border,
-                                width: 1.5,
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: AppRadius.control,
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surfaceVariant,
+                      contentPadding: AppSpacing.inputPadding,
+                    ),
+                  ),
+                  AppSpacing.vMd,
+                  Text('Màu sắc', style: Theme.of(ctx).textTheme.labelMedium),
+                  AppSpacing.vSm,
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: colors.map((hex) {
+                      final color = _parseColor(hex);
+                      final selected = hex == selectedColor;
+                      return GestureDetector(
+                        onTap: () => setModalState(() => selectedColor = hex),
+                        child: AnimatedContainer(
+                          duration: AppMotion.fast,
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: selected ? AppColors.textPrimary : Colors.transparent,
+                              width: 2.5,
+                            ),
+                            boxShadow: selected ? AppShadows.card : null,
+                          ),
+                          child: selected
+                              ? const Icon(Icons.check, color: Colors.white, size: 18)
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  AppSpacing.vMd,
+                  Text('Biểu tượng', style: Theme.of(ctx).textTheme.labelMedium),
+                  AppSpacing.vSm,
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _nbIcons.map((entry) {
+                      final selected = entry.$1 == selectedIcon;
+                      final accent = _parseColor(selectedColor);
+                      return GestureDetector(
+                        onTap: () => setModalState(() => selectedIcon = entry.$1),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedContainer(
+                              duration: AppMotion.fast,
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: selected ? accent : AppColors.surfaceVariant,
+                                borderRadius: AppRadius.control,
+                                border: Border.all(
+                                  color: selected ? accent : AppColors.border,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Icon(
+                                entry.$2,
+                                size: 20,
+                                color: selected ? Colors.white : AppColors.textSecondary,
                               ),
                             ),
-                            child: Icon(
-                              entry.$2,
-                              size: 20,
-                              color: isSelected ? Colors.white : AppColors.textSecondary,
+                            const SizedBox(height: 3),
+                            Text(
+                              entry.$3,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: selected ? accent : AppColors.textTertiary,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            entry.$3,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: isSelected ? accent : AppColors.textTertiary,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Huỷ'),
+              ),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Tạo'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Huỷ'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final name = nameController.text.trim();
-                if (name.isEmpty) return;
-                // Lấy provider & scaffoldMessenger TRƯỚC khi pop (tránh dùng context sau async gap)
-                final provider = context.read<NotebookProvider>();
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.of(ctx).pop();
-                final nb = await provider.createNotebook(
-                  name, selectedColor, selectedIcon,
-                );
-                if (nb == null) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: const Text('Tạo notebook thất bại'),
-                      backgroundColor: AppColors.error,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
-                      margin: const EdgeInsets.all(AppSpacing.md),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Tạo'),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
-    nameController.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      nameController.dispose();
+    });
   }
 
   Future<void> _confirmDelete(Notebook nb) async {
@@ -237,13 +304,38 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateDialog,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Tạo mới', style: TextStyle(fontWeight: FontWeight.w600)),
-      ).appScaleIn(delay: const Duration(milliseconds: 300)),
+      appBar: _isSelectionMode
+          ? AppBar(
+              backgroundColor: AppColors.surface,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _clearSelection,
+              ),
+              title: Text('${_selectedIds.length} đã chọn'),
+              actions: [
+                TextButton(
+                  onPressed: _selectedIds.isEmpty ? null : _confirmDeleteSelected,
+                  child: Text(
+                    'Xoá',
+                    style: TextStyle(
+                      color: _selectedIds.isEmpty ? AppColors.textTertiary : AppColors.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : null,
+      floatingActionButton: _isSelectionMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showCreateDialog,
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Tạo mới', style: TextStyle(fontWeight: FontWeight.w600)),
+            ).appScaleIn(delay: const Duration(milliseconds: 300)),
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.primary,
@@ -297,23 +389,33 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
                           childAspectRatio: 1.05,
                         ),
                         delegate: SliverChildBuilderDelegate(
-                          (context, index) => _NotebookCard(
-                            notebook: provider.notebooks[index],
-                            index: index,
-                            onDelete: () => _confirmDelete(provider.notebooks[index]),
-                            onChat: () {
-                              final nb = provider.notebooks[index];
-                              context.read<ChatProvider>().setActiveNotebook(
-                                nb.id,
-                                notebookName: nb.name,
-                              );
-                              // Defer navigation to next frame so notifyListeners()
-                              // finishes propagating before the widget tree changes.
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (context.mounted) context.go('/chat');
-                              });
-                            },
-                          ),
+                          (context, index) {
+                            final nb = provider.notebooks[index];
+                            final isSelected = _selectedIds.contains(nb.id);
+                            return _NotebookCard(
+                              notebook: nb,
+                              index: index,
+                              isSelectionMode: _isSelectionMode,
+                              isSelected: isSelected,
+                              onTap: _isSelectionMode
+                                  ? () => _toggleSelection(nb.id)
+                                  : () => context.push('/notebook/${nb.id}'),
+                              onLongPress: () => _toggleSelection(nb.id),
+                              onDelete: () => _confirmDelete(nb),
+                              onChat: () {
+                                if (!context.mounted) return;
+                                try {
+                                  context.read<ChatProvider>().setActiveNotebook(
+                                    nb.id,
+                                    notebookName: nb.name,
+                                  );
+                                } catch (_) {}
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (context.mounted) context.go('/chat');
+                                });
+                              },
+                            );
+                          },
                           childCount: provider.notebooks.length,
                         ),
                       );
@@ -365,12 +467,20 @@ Color _parseColor(String hex) {
 class _NotebookCard extends StatelessWidget {
   final Notebook notebook;
   final int index;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final VoidCallback onDelete;
   final VoidCallback onChat;
 
   const _NotebookCard({
     required this.notebook,
     required this.index,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onTap,
+    this.onLongPress,
     required this.onDelete,
     required this.onChat,
   });
@@ -382,16 +492,20 @@ class _NotebookCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: isSelected ? nbColor.withValues(alpha: 0.08) : AppColors.surfaceElevated,
         borderRadius: AppRadius.card,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isSelected ? nbColor : AppColors.border,
+          width: isSelected ? 2 : 1,
+        ),
         boxShadow: AppShadows.card,
       ),
       child: Material(
         color: Colors.transparent,
         borderRadius: AppRadius.card,
         child: InkWell(
-          onTap: onChat,
+          onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: AppRadius.card,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,23 +529,34 @@ class _NotebookCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.all(7),
                             decoration: BoxDecoration(
-                              color: nbColor.withValues(alpha: 0.12),
+                              color: isSelected
+                                  ? nbColor.withValues(alpha: 0.2)
+                                  : nbColor.withValues(alpha: 0.12),
                               borderRadius: AppRadius.control,
                             ),
-                            child: Icon(
-                              _iconFromKey(notebook.icon),
-                              size: 18,
-                              color: nbColor,
-                            ),
+                            child: isSelected
+                                ? Icon(Icons.check, size: 18, color: nbColor)
+                                : Icon(
+                                    _iconFromKey(notebook.icon),
+                                    size: 18,
+                                    color: nbColor,
+                                  ),
                           ),
                           const Spacer(),
-                          IconButton(
-                            icon: const Icon(Icons.more_vert, size: 18),
-                            color: AppColors.textSecondary,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            onPressed: () => _showOptions(context),
-                          ),
+                          if (!isSelectionMode)
+                            IconButton(
+                              icon: const Icon(Icons.more_vert, size: 18),
+                              color: AppColors.textSecondary,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              onPressed: () => _showOptions(context),
+                            )
+                          else
+                            Icon(
+                              isSelected ? Icons.check_circle : Icons.circle_outlined,
+                              size: 22,
+                              color: isSelected ? nbColor : AppColors.border,
+                            ),
                         ],
                       ),
                       AppSpacing.vSm,
@@ -513,19 +638,19 @@ class _NotebookCard extends StatelessWidget {
               ),
             ),
             ListTile(
+              leading: Icon(Icons.delete_outline, color: AppColors.error),
+              title: Text('Xoá notebook', style: TextStyle(color: AppColors.error)),
+              onTap: () {
+                Navigator.of(context).pop();
+                WidgetsBinding.instance.addPostFrameCallback((_) => onDelete());
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.chat_bubble_outline_rounded),
               title: const Text('Chat với notebook này'),
               onTap: () {
                 Navigator.of(context).pop();
                 WidgetsBinding.instance.addPostFrameCallback((_) => onChat());
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.delete_outline_rounded, color: AppColors.error),
-              title: Text('Xoá notebook', style: TextStyle(color: AppColors.error)),
-              onTap: () {
-                Navigator.of(context).pop();
-                WidgetsBinding.instance.addPostFrameCallback((_) => onDelete());
               },
             ),
             AppSpacing.vSm,

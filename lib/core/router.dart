@@ -39,6 +39,7 @@ import '../features/auth/register_screen.dart';
 import '../features/auth/forgot_password_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/notebooks/notebooks_screen.dart';
+import '../features/notebook/screens/notebook_detail_screen.dart';
 import '../features/upload/upload_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -68,7 +69,7 @@ final GlobalKey<NavigatorState> _shellNavigatorKey =
 
 // Danh sách route cần đăng nhập — dùng startsWith() để bắt cả sub-route
 // vd: /home/document/123 cũng sẽ bị guard
-const _protectedRoutes = ['/home', '/notebooks', '/upload', '/chat', '/profile'];
+const _protectedRoutes = ['/home', '/notebooks', '/notebook', '/upload', '/chat', '/profile'];
 
 final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -120,7 +121,20 @@ final router = GoRouter(
           buildPageTransition(state, const ForgotPasswordScreen()),
     ),
 
+    // Route notebook detail — ngoài ShellRoute (không BottomNav)
+    GoRoute(
+      path: '/notebook/:id',
+      pageBuilder: (context, state) {
+        final notebookId = state.pathParameters['id']!;
+        return buildPageTransition(
+          state,
+          NotebookDetailScreen(notebookId: notebookId),
+        );
+      },
+    ),
+
     // ShellRoute: các route này share cùng MainScaffold (BottomNavigationBar)
+    // Khi điều hướng giữa /home, /upload, /chat, /profile:
     // Khi điều hướng giữa /home, /upload, /chat, /profile:
     //   → child Widget thay đổi nhưng MainScaffold KHÔNG rebuild
     //   → BottomNavigationBar giữ nguyên, không bị flash

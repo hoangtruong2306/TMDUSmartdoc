@@ -305,7 +305,19 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  /// Gửi tin nhắn qua RAG pipeline.
+  /// Xoá toàn bộ state — gọi trước khi đăng xuất.
+  void clearAll() {
+    _messages.clear();
+    _conversations.clear();
+    _activeDocId = null;
+    _activeDocTitle = null;
+    _activeNotebookId = null;
+    _activeNotebookName = null;
+    _hasLoadedHistory = false;
+    notifyListeners();
+  }
+
+  /// Gửi tin nhắn qua RAG pipeline (SSE streaming).
   void sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -349,7 +361,9 @@ class ChatProvider extends ChangeNotifier {
               'text': mockMsg.text,
               'isAi': true,
               'timestamp': FieldValue.serverTimestamp(),
-              'citations': mockMsg.citations.map((c) => {'label': c.label, 'value': c.value, 'snippet': c.snippet, 'filename': c.filename}).toList(),
+              'citations': mockMsg.citations
+                  .map((c) => {'label': c.label, 'value': c.value, 'snippet': c.snippet, 'filename': c.filename})
+                  .toList(),
             });
             _updateLastMessage(mockMsg.text);
           } catch (e) {
@@ -363,74 +377,127 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final idToken = await user.getIdToken();
-      // Build history — bỏ tin chào, lấy 8 tin gần nhất
-final history = _messages
-    .where((m) => !m.text.startsWith('Xin chào!'))
-    .toList()
-    .reversed
-    .take(8)
-    .toList()
-    .reversed
-    .map((m) => {
-          'role': m.isAi ? 'model' : 'user',
-          'content': m.text,
-        })
-    .toList();
 
-final body = <String, dynamic>{
-  'message': text,
-  'history': history,
-};
-if (_activeNotebookId != null) {
-  body['notebook_id'] = _activeNotebookId;
-} else if (_activeDocId != null) {
-  body['doc_id'] = _activeDocId;
-}
+      final history = _messages
+          .where((m) => !m.text.startsWith('Xin chào!'))
+          .toList()
+          .reversed
+          .take(8)
+          .toList()
+          .reversed
+          .map((m) => {'role': m.isAi ? 'model' : 'user', 'content': m.text})
+          .toList();
 
-      final response = await http.post(
-        Uri.parse('${AppConstants.backendBaseUrl}/chat/ask'),
-        headers: {
-          'Authorization': 'Bearer $idToken',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode(body),
-      ).timeout(const Duration(seconds: 30));
+      final body = <String, dynamic>{'message': text, 'history': history};
+      if (_activeNotebookId != null) {
+        body['notebook_id'] = _activeNotebookId;
+      } else if (_activeDocId != null) {
+        body['doc_id'] = _activeDocId;
+      }
 
-      _isTyping = false;
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConstants.backendBaseUrl}/chat/stream'),
+      );
+      request.headers['Authorization'] = 'Bearer $idToken';
+      request.headers['Content-Type'] = 'application/json';
+      request.body = json.encode(body);
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final String answer = data['answer'] ?? '';
-        final List<dynamic> citData = data['citations'] ?? [];
-        final citations = citData
-            .map((c) => CitationData(
-                  c['label'] ?? 'Nguồn',
-                  c['value']?.toString() ?? '',
-                  snippet: c['snippet'] ?? '',
-                  filename: c['filename'] ?? '',
-                ))
-            .toList();
+      final streamedResponse = await http.Client()
+          .send(request)
+          .timeout(const Duration(seconds: 30));
 
-        final aiMsg = ChatMessage(text: answer, isAi: true, citations: citations);
-        _messages.add(aiMsg);
+      if (streamedResponse.statusCode != 200) {
+        throw Exception('Lỗi server: ${streamedResponse.statusCode}');
+      }
 
-        if (uid != null && ref != null) {
-          await ref.add({
-            'text': answer,
-            'isAi': true,
-            'timestamp': FieldValue.serverTimestamp(),
-            'citations': citations.map((c) => {'label': c.label, 'value': c.value, 'snippet': c.snippet, 'filename': c.filename}).toList(),
-          });
-          _updateLastMessage(answer);
-        }
-      } else {
-        throw Exception('Lỗi server: ${response.statusCode}');
+      // bubbleIdx null cho đến khi token đầu tiên đến
+      // → typing indicator giữ nguyên trong khi server đang embed/Supabase/Gemini
+      int? bubbleIdx;
+      String fullText = '';
+      List<CitationData> citations = [];
+
+      await for (final line in streamedResponse.stream
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data: ')) continue;
+        final raw = line.substring(6).trim();
+        if (raw.isEmpty) continue;
+        try {
+          final event = json.decode(raw) as Map<String, dynamic>;
+          final type = event['type'] as String? ?? '';
+
+          if (type == 'processing' || type == 'ping') {
+            // Server đang xử lý — giữ nguyên typing indicator
+          } else if (type == 'citations') {
+            final citData = event['citations'] as List? ?? [];
+            citations = citData
+                .map((c) => CitationData(
+                      c['label'] ?? 'Nguồn',
+                      c['value']?.toString() ?? '',
+                      snippet: c['snippet'] ?? '',
+                      filename: c['filename'] ?? '',
+                    ))
+                .toList();
+          } else if (type == 'token') {
+            final token = event['text'] as String? ?? '';
+            if (token.isEmpty) continue;
+            fullText += token;
+            if (bubbleIdx == null) {
+              // Token đầu tiên — thêm bubble, ẩn typing indicator
+              _messages.add(ChatMessage(
+                  text: fullText, isAi: true, citations: citations));
+              bubbleIdx = _messages.length - 1;
+              _isTyping = false;
+            } else {
+              _messages[bubbleIdx] = ChatMessage(
+                  text: fullText, isAi: true, citations: citations);
+            }
+            notifyListeners();
+          } else if (type == 'done' || type == 'error') {
+            if (type == 'error' && fullText.isEmpty) {
+              final msg = event['message'] as String? ??
+                  'Có lỗi xảy ra. Vui lòng thử lại.';
+              _isTyping = false;
+              _messages.add(ChatMessage(text: msg, isAi: true));
+              notifyListeners();
+            }
+            if (uid != null && ref != null && fullText.isNotEmpty) {
+              try {
+                await ref.add({
+                  'text': fullText,
+                  'isAi': true,
+                  'timestamp': FieldValue.serverTimestamp(),
+                  'citations': citations
+                      .map((c) => {
+                            'label': c.label,
+                            'value': c.value,
+                            'snippet': c.snippet,
+                            'filename': c.filename,
+                          })
+                      .toList(),
+                });
+                _updateLastMessage(fullText);
+              } catch (e) {
+                debugPrint('Lỗi lưu AI response: $e');
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Stream kết thúc nhưng chưa nhận được token nào
+      if (bubbleIdx == null) {
+        _isTyping = false;
+        _messages.add(ChatMessage(
+            text: 'Không nhận được phản hồi. Vui lòng thử lại.', isAi: true));
+        notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ Chat error: $e');
+      debugPrint('❌ Chat stream error: $e');
       _isTyping = false;
       final errorMsg = e.toString().contains('TimeoutException')
-          ? 'Máy chủ phản hồi quá chậm, vui lòng thử lại.'
+          ? 'Kết nối tới máy chủ quá chậm, vui lòng thử lại.'
           : 'Không kết nối được máy chủ AI. Kiểm tra mạng và thử lại.';
       _messages.add(ChatMessage(text: errorMsg, isAi: true));
       if (uid != null && ref != null) {

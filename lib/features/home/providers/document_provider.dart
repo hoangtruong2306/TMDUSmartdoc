@@ -29,14 +29,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants.dart';
 
 /// Model đại diện cho một tài liệu trong danh sách.
-/// Dùng tên "MockDocument" vì ban đầu dùng mock data,
-/// nhưng nay đã map từ real API response.
 class MockDocument {
   final String id;
   final String title;
   final int pageCount;
   final String date;
-  final String type; // "pdf" hoặc "ppt" (ảnh hưởng icon hiển thị)
+  final String type; // "pdf" hoặc "ppt"
 
   MockDocument({
     required this.id,

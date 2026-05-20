@@ -42,8 +42,6 @@ class NotebookProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasLoaded => _hasLoaded;
 
-  String? get _userId => FirebaseAuth.instance.currentUser?.uid;
-
   Future<void> loadNotebooks() async {
     if (_hasLoaded || _isLoading) return;
     _isLoading = true;
@@ -149,8 +147,63 @@ class NotebookProvider extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> deleteNotebooks(List<String> ids) async {
+    if (ids.isEmpty) return true;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+      final idToken = await user.getIdToken();
+
+      // Thử gọi batch API trước
+      try {
+        final response = await http.delete(
+          Uri.parse('${AppConstants.backendBaseUrl}/notebooks/batch'),
+          headers: {
+            'Authorization': 'Bearer $idToken',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode({'ids': ids}),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          _notebooks.removeWhere((nb) => ids.contains(nb.id));
+          notifyListeners();
+          return true;
+        }
+      } catch (_) {
+        // Batch API không có → fallback xóa tuần tự
+      }
+
+      // Fallback: xóa từng cái một
+      bool anySuccess = false;
+      for (final id in ids) {
+        try {
+          final response = await http.delete(
+            Uri.parse('${AppConstants.backendBaseUrl}/notebooks/$id'),
+            headers: {'Authorization': 'Bearer $idToken'},
+          ).timeout(const Duration(seconds: 5));
+          if (response.statusCode == 200) anySuccess = true;
+        } catch (_) {
+          // Ignore single delete error
+        }
+      }
+      _notebooks.removeWhere((nb) => ids.contains(nb.id));
+      notifyListeners();
+      return anySuccess;
+    } catch (e) {
+      debugPrint('Lỗi xóa nhiều notebook: $e');
+      return false;
+    }
+  }
+
   Future<void> refresh() async {
     _hasLoaded = false;
     await loadNotebooks();
+  }
+
+  void clear() {
+    _notebooks.clear();
+    _hasLoaded = false;
+    notifyListeners();
   }
 }

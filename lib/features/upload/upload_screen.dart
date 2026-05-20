@@ -18,6 +18,21 @@ class UploadScreen extends StatefulWidget {
 
 class _UploadScreenState extends State<UploadScreen> {
   String? _selectedNotebookId;
+  String? _returnNotebookId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Đọc notebook_id từ navigation extra (khi navigate từ NotebookDetailScreen)
+    final extra = GoRouterState.of(context).extra;
+    if (extra is Map<String, dynamic> && _selectedNotebookId == null) {
+      final notebookId = extra['notebook_id']?.toString();
+      if (notebookId != null && notebookId.isNotEmpty) {
+        _selectedNotebookId = notebookId;
+        _returnNotebookId = notebookId;
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -54,7 +69,13 @@ class _UploadScreenState extends State<UploadScreen> {
       // Refresh danh sách tài liệu → home screen hiển thị file vừa upload
       await documentProvider.refresh();
       if (!mounted) return;
-      context.go('/home');
+      
+      // Nếu upload từ notebook detail → quay về đó
+      if (_returnNotebookId != null) {
+        context.go('/notebook/${_returnNotebookId}');
+      } else {
+        context.go('/home');
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

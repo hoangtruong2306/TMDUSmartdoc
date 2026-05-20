@@ -3,20 +3,6 @@ import '../../core/constants.dart';
 import 'citation_chip.dart';
 import 'skeleton_widgets.dart';
 
-class CitationData {
-  final String label;
-  final String value;
-  final String snippet;
-  final String filename;
-
-  CitationData(
-    this.label,
-    this.value, {
-    this.snippet = '',
-    this.filename = '',
-  });
-}
-
 class AIChatBubble extends StatelessWidget {
   final String text;
   final List<CitationData> citations;
@@ -69,13 +55,7 @@ class AIChatBubble extends StatelessWidget {
                       spacing: AppSpacing.sm,
                       runSpacing: AppSpacing.sm,
                       children: citations
-                          .map(
-                            (c) => CitationChip(
-                              label: c.label,
-                              value: c.value,
-                              onTap: () {},
-                            ),
-                          )
+                          .map((c) => CitationChip(citation: c))
                           .toList(),
                     ),
                   ],
