@@ -109,7 +109,7 @@ class DocumentCardSkeleton extends StatelessWidget {
               SkeletonBox(width: 26, height: 26, borderRadius: AppRadius.chip),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 16), // fixed height thay Spacer (tránh unbounded constraint trong SliverList)
           const SkeletonBox(height: 14),
           AppSpacing.vSm,
           const SkeletonBox(width: 120, height: 14),
