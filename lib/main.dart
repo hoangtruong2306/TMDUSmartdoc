@@ -8,6 +8,7 @@ import 'features/home/providers/document_provider.dart';
 import 'features/chat/providers/chat_provider.dart';
 import 'features/upload/providers/upload_provider.dart';
 import 'features/notebooks/providers/notebook_provider.dart';
+import 'features/quiz/providers/quiz_provider.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -27,6 +28,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => UploadProvider()),
         ChangeNotifierProvider(create: (_) => NotebookProvider()),
+        ChangeNotifierProvider(create: (_) => QuizProvider()),
       ],
       child: const TdmuSmartDocApp(),
     ),

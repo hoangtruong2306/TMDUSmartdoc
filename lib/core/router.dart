@@ -43,6 +43,7 @@ import '../features/notebook/screens/notebook_detail_screen.dart';
 import '../features/upload/upload_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/quiz/screens/quiz_screen.dart';
 import '../shared/widgets/main_scaffold.dart';
 import 'constants.dart';
 
@@ -69,7 +70,7 @@ final GlobalKey<NavigatorState> _shellNavigatorKey =
 
 // Danh sách route cần đăng nhập — dùng startsWith() để bắt cả sub-route
 // vd: /home/document/123 cũng sẽ bị guard
-const _protectedRoutes = ['/home', '/notebooks', '/notebook', '/upload', '/chat', '/profile'];
+const _protectedRoutes = ['/home', '/notebooks', '/notebook', '/upload', '/chat', '/profile', '/quiz'];
 
 final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -129,6 +130,25 @@ final router = GoRouter(
         return buildPageTransition(
           state,
           NotebookDetailScreen(notebookId: notebookId),
+        );
+      },
+    ),
+
+    // Route Quiz AI — full-screen, không có BottomNav
+    // Path: /quiz/:notebookId?name=<encodedName>
+    // notebookId  → để gọi API /quiz/generate
+    // name        → query param tên notebook, hiển thị trên AppBar
+    GoRoute(
+      path: '/quiz/:notebookId',
+      pageBuilder: (context, state) {
+        final notebookId   = state.pathParameters['notebookId']!;
+        final notebookName = state.uri.queryParameters['name'] ?? 'Notebook';
+        return buildPageTransition(
+          state,
+          QuizScreen(
+            notebookId:   notebookId,
+            notebookName: notebookName,
+          ),
         );
       },
     ),

@@ -277,15 +277,66 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                   ],
                 ),
               ),
-        floatingActionButton: _isSelectionMode
+        // ── Bottom action bar: Chat với AI + Luyện thi ────────────────────────
+        // Dùng bottomNavigationBar thay FAB để có đủ chỗ cho 2 nút
+        // Chỉ hiển thị khi không ở chế độ selection
+        bottomNavigationBar: _isSelectionMode
             ? null
-            : FloatingActionButton.extended(
-                onPressed: _onChatTap,
-                backgroundColor: accent,
-                foregroundColor: Colors.white,
-                elevation: 4,
-                icon: const Icon(Icons.chat_bubble_rounded),
-                label: const Text('Chat voi AI', style: TextStyle(fontWeight: FontWeight.w600)),
+            : SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Row(
+                    children: [
+                      // Nút Chat với AI (primary — chiếm nhiều không gian hơn)
+                      Expanded(
+                        flex: 3,
+                        child: FilledButton.icon(
+                          onPressed: _onChatTap,
+                          icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+                          label: const Text(
+                            'Chat với AI',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: accent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: AppRadius.control,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Nút Luyện thi (outlined — phụ)
+                      Expanded(
+                        flex: 2,
+                        child: OutlinedButton.icon(
+                          onPressed: () => context.push(
+                            '/quiz/${widget.notebookId}'
+                            '?name=${Uri.encodeComponent(nb.name)}',
+                          ),
+                          icon: Icon(Icons.quiz_rounded, size: 18, color: accent),
+                          label: Text(
+                            'Luyện thi',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: accent,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            foregroundColor: accent,
+                            side: BorderSide(color: accent),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: AppRadius.control,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
         body: SafeArea(
           child: CustomScrollView(
