@@ -75,7 +75,8 @@ class _QuizReviewScreenState extends State<QuizReviewScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    context.read<QuizHistoryProvider>().clearDetail();
+    // Dùng Provider.of với listen:false để tránh lỗi context-after-deactivate
+    Provider.of<QuizHistoryProvider>(context, listen: false).clearDetail();
     super.dispose();
   }
 
@@ -87,37 +88,43 @@ class _QuizReviewScreenState extends State<QuizReviewScreen>
   Widget build(BuildContext context) {
     final provider = context.watch<QuizHistoryProvider>();
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: _buildBody(provider),
-      ),
-    );
-  }
-
-  Widget _buildBody(QuizHistoryProvider provider) {
-    if (provider.isLoadingDetail) {
-      return const _LoadingView();
-    }
-
-    if (provider.detailError != null) {
-      return _ErrorView(
-        message: provider.detailError!,
-        onRetry: _retry,
-        onBack:  () => context.pop(),
+    // ── Loaded: _DetailView dùng NestedScrollView + SliverAppBar bên trong.
+    //    Outer Scaffold không có AppBar riêng để tránh double header.
+    final detail = provider.sessionDetail;
+    if (!provider.isLoadingDetail &&
+        provider.detailError == null && detail != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: _DetailView(
+          detail:        detail,
+          tabController: _tabController,
+          onBack:        () => context.pop(),
+        ),
       );
     }
 
-    final detail = provider.sessionDetail;
-    if (detail == null) {
-      return const _LoadingView();
-    }
-
-    return _DetailView(
-      detail:        detail,
-      tabController: _tabController,
-      onBack:        () => context.pop(),
+    // ── Loading / Error: dùng Scaffold đơn giản với AppBar tĩnh
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text(
+          'Xem lại bài làm',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: provider.detailError != null
+          ? _ErrorBody(
+              message: provider.detailError!,
+              onRetry: _retry,
+            )
+          : const _LoadingBody(),
     );
   }
 }
@@ -673,89 +680,62 @@ class _NoWrongQuestions extends StatelessWidget {
 
 
 // =============================================================================
-// _LoadingView / _ErrorView
+// _LoadingBody / _ErrorBody — Nội dung body (không phải Scaffold) cho các state
 // =============================================================================
 
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
+class _LoadingBody extends StatelessWidget {
+  const _LoadingBody();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text('Xem lại bài làm'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: AppColors.primary),
-            const SizedBox(height: 16),
-            Text(
-              'Đang tải...',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: AppColors.primary),
+          const SizedBox(height: 16),
+          Text(
+            'Đang tải...',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String   message;
+class _ErrorBody extends StatelessWidget {
+  final String       message;
   final VoidCallback onRetry;
-  final VoidCallback onBack;
-  const _ErrorView({required this.message, required this.onRetry, required this.onBack});
+  const _ErrorBody({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: onBack,
-        ),
-        title: const Text('Xem lại bài làm'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline_rounded, size: 52, color: AppColors.error),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 52, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Thử lại'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(160, 48),
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
               ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Thử lại'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(160, 48),
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
