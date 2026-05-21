@@ -113,6 +113,7 @@ class _QuizScreenState extends State<QuizScreen> {
     setState(() => _setupDone = true);
     context.read<QuizProvider>().generateQuiz(
       notebookId:   widget.notebookId,
+      notebookName: widget.notebookName,
       numQuestions: _selectedNum,
       difficulty:   _selectedDifficulty,
     );
@@ -128,6 +129,7 @@ class _QuizScreenState extends State<QuizScreen> {
   void _retry() {
     context.read<QuizProvider>().generateQuiz(
       notebookId:   widget.notebookId,
+      notebookName: widget.notebookName,
       numQuestions: _selectedNum,
       difficulty:   _selectedDifficulty,
     );
@@ -243,10 +245,12 @@ class _QuizScreenState extends State<QuizScreen> {
     if (provider.showResult) {
       return _ResultView(
         key: const ValueKey('result'),
-        provider:    provider,
-        difficulty:  _difficultyLabel,
-        onRedo:      provider.reset,
-        onNewSet:    _resetToSetup,
+        provider:     provider,
+        difficulty:   _difficultyLabel,
+        notebookId:   widget.notebookId,
+        notebookName: widget.notebookName,
+        onRedo:       provider.reset,
+        onNewSet:     _resetToSetup,
       );
     }
 
@@ -924,6 +928,8 @@ class _QuestionView extends StatelessWidget {
 class _ResultView extends StatelessWidget {
   final QuizProvider provider;
   final String       difficulty;
+  final String       notebookId;
+  final String       notebookName;
   final VoidCallback onRedo;
   final VoidCallback onNewSet;
 
@@ -931,6 +937,8 @@ class _ResultView extends StatelessWidget {
     super.key,
     required this.provider,
     required this.difficulty,
+    required this.notebookId,
+    required this.notebookName,
     required this.onRedo,
     required this.onNewSet,
   });
@@ -1114,6 +1122,43 @@ class _ResultView extends StatelessWidget {
 
           const SizedBox(height: 24),
 
+          // ── Saving indicator ───────────────────────────────────────────────
+          if (provider.isSaving) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 12, height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Đang lưu kết quả...',
+                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ] else if (provider.savedSessionId != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.check_circle_outline_rounded, size: 12, color: Colors.green.shade600),
+                const SizedBox(width: 6),
+                Text(
+                  'Đã lưu vào lịch sử',
+                  style: TextStyle(fontSize: 11, color: Colors.green.shade600),
+                ),
+              ],
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
           // ── Action buttons ─────────────────────────────────────────────────
           FilledButton.icon(
             onPressed: onRedo,
@@ -1135,6 +1180,33 @@ class _ResultView extends StatelessWidget {
               foregroundColor: AppColors.primary,
               side: BorderSide(color: AppColors.primary),
               shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Nút xem lịch sử — chỉ hiển thị khi lưu thành công
+          if (provider.savedSessionId != null)
+            OutlinedButton.icon(
+              onPressed: () => context.push(
+                '/quiz/review/${provider.savedSessionId}',
+              ),
+              icon: const Icon(Icons.history_edu_rounded),
+              label: const Text('Xem chi tiết bài làm'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+                foregroundColor: AppColors.textSecondary,
+                side: BorderSide(color: AppColors.border),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
+              ),
+            ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: () => context.push(
+              '/quiz/history/$notebookId?name=${Uri.encodeComponent(notebookName)}',
+            ),
+            icon: const Icon(Icons.list_alt_rounded, size: 16),
+            label: const Text('Xem lịch sử luyện thi'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
             ),
           ),
         ],

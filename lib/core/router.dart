@@ -44,6 +44,8 @@ import '../features/upload/upload_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/quiz/screens/quiz_screen.dart';
+import '../features/quiz/screens/quiz_history_screen.dart';
+import '../features/quiz/screens/quiz_review_screen.dart';
 import '../shared/widgets/main_scaffold.dart';
 import 'constants.dart';
 
@@ -149,6 +151,36 @@ final router = GoRouter(
             notebookId:   notebookId,
             notebookName: notebookName,
           ),
+        );
+      },
+    ),
+
+    // Route lịch sử luyện thi — danh sách các lần làm bài của 1 notebook
+    // Path: /quiz/history/:notebookId?name=<encodedName>
+    GoRoute(
+      path: '/quiz/history/:notebookId',
+      pageBuilder: (context, state) {
+        final notebookId   = state.pathParameters['notebookId']!;
+        final notebookName = state.uri.queryParameters['name'] ?? 'Notebook';
+        return buildPageTransition(
+          state,
+          QuizHistoryScreen(
+            notebookId:   notebookId,
+            notebookName: notebookName,
+          ),
+        );
+      },
+    ),
+
+    // Route xem lại chi tiết 1 session — câu hỏi + đáp án + giải thích
+    // Path: /quiz/review/:sessionId
+    GoRoute(
+      path: '/quiz/review/:sessionId',
+      pageBuilder: (context, state) {
+        final sessionId = state.pathParameters['sessionId']!;
+        return buildPageTransition(
+          state,
+          QuizReviewScreen(sessionId: sessionId),
         );
       },
     ),
