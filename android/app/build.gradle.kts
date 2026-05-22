@@ -31,6 +31,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // ── Patrol: chạy test với PatrolJUnitRunner + Orchestrator ──────────
+        testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     buildTypes {
@@ -44,4 +52,10 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// ── Patrol dependencies ────────────────────────────────────────────────────
+dependencies {
+    androidTestImplementation("pl.leancode.patrol:patrol:4.6.0")
+    androidTestUtil("androidx.test:orchestrator:1.4.2")
 }

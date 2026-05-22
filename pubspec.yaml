@@ -54,6 +54,11 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  # ── Testing ────────────────────────────────────────────────────────────────
+  patrol: ^4.0.0           # E2E integration tests với native interaction support
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
