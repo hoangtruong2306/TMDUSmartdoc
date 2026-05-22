@@ -27,7 +27,7 @@ android {
         applicationId = "com.example.tdmu_smartdocs"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24  // flutter_plugin_android_lifecycle yêu cầu minSdk >= 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -54,8 +54,9 @@ flutter {
     source = "../.."
 }
 
-// ── Patrol dependencies ────────────────────────────────────────────────────
+// ── Patrol: Orchestrator để chạy test độc lập, clear state giữa các test ──
+// Lưu ý: patrol Android library tự động nhúng qua Flutter plugin (Pub Cache)
+// KHÔNG cần khai báo androidTestImplementation("pl.leancode.patrol:patrol")
 dependencies {
-    androidTestImplementation("pl.leancode.patrol:patrol:4.6.0")
     androidTestUtil("androidx.test:orchestrator:1.4.2")
 }
