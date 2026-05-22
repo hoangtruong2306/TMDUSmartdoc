@@ -203,6 +203,57 @@ class DocumentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Delete ────────────────────────────────────────────────────────────────────
+
+  /// Xóa nhiều tài liệu — thử batch API trước, fallback tuần tự.
+  /// Optimistic: xóa khỏi danh sách local trước khi nhận xác nhận từ server.
+  Future<bool> deleteDocuments(List<String> ids) async {
+    if (ids.isEmpty) return true;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+      final idToken = await user.getIdToken();
+
+      // Thử batch endpoint
+      try {
+        final res = await http.delete(
+          Uri.parse('${AppConstants.backendBaseUrl}/documents/batch'),
+          headers: {
+            'Authorization': 'Bearer $idToken',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode({'ids': ids}),
+        ).timeout(const Duration(seconds: 10));
+
+        if (res.statusCode == 200) {
+          _allDocs.removeWhere((d) => ids.contains(d.id));
+          notifyListeners();
+          return true;
+        }
+      } catch (_) {
+        // Batch không có → fallback từng cái
+      }
+
+      // Fallback: xóa tuần tự
+      bool anyOk = false;
+      for (final id in ids) {
+        try {
+          final res = await http.delete(
+            Uri.parse('${AppConstants.backendBaseUrl}/documents/$id'),
+            headers: {'Authorization': 'Bearer $idToken'},
+          ).timeout(const Duration(seconds: 8));
+          if (res.statusCode == 200) anyOk = true;
+        } catch (_) {}
+      }
+      _allDocs.removeWhere((d) => ids.contains(d.id));
+      notifyListeners();
+      return anyOk;
+    } catch (e) {
+      debugPrint('Lỗi xóa tài liệu: $e');
+      return false;
+    }
+  }
+
   // ── Load / Refresh ────────────────────────────────────────────────────────────
 
   Future<void> loadDocuments() async {
