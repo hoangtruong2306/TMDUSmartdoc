@@ -195,7 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                           title: doc.title,
-                          subtitle: '${doc.pageCount} trang · ${doc.date}',
+                          subtitle: '${doc.pageCount} trang · ${doc.shortTime}',
                           onTap: () {
                             Navigator.pop(ctx);
                             chatProvider.setActiveDoc(doc.id,

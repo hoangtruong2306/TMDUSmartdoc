@@ -1,139 +1,218 @@
 // =============================================================================
 // DOCUMENT PROVIDER — Bộ quản lý danh sách tài liệu ở HomeScreen
 // =============================================================================
-// LUỒNG THUẬT TOÁN:
+// MODEL:
+//   Document — đại diện một tài liệu với đầy đủ metadata:
+//     id, title, pageCount, createdAt (DateTime), type, status,
+//     notebookId, studyCount (in-memory session counter)
 //
-//   HomeScreen.initState() → loadDocuments()
-//         ↓
-//   [Kiểm tra: URL là placeholder?] → Dùng mock data ngay
-//         ↓ (URL hợp lệ)
-//   [Lấy Firebase ID Token]
-//         ↓
-//   [Gọi GET /documents với Bearer token]
-//         ↓
-//   Backend trả về: [{id, title, page_count, created_at, type}, ...]
-//         ↓
-//   [Map JSON → MockDocument objects]
-//         ↓
-//   [Lọc theo searchQuery (tìm kiếm real-time)]
+// GROUPING ALGORITHM:
+//   groupedDocuments → LinkedHashMap<String, List<Document>>
+//   Key là nhãn ngày (theo thứ tự: Hôm nay → Hôm qua → Tuần này → Tháng M/YYYY)
+//   Docs được sort theo createdAt desc trước khi nhóm.
 //
-// FALLBACK: Nếu backend lỗi → giữ nguyên mock data (không crash app)
-//
-// TÌM KIẾM: Lọc theo title.contains(query) — so sánh không phân biệt hoa/thường
+// STUDY COUNT:
+//   In-memory Map<docId, count>. Tăng khi user mở Chat/Quiz từ HomeScreen.
+//   Sau khi có backend session tracking, thay Map này = API call.
 // =============================================================================
 
+import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constants.dart';
 
-/// Model đại diện cho một tài liệu trong danh sách.
-class MockDocument {
+// ── Model ─────────────────────────────────────────────────────────────────────
+
+class Document {
   final String id;
   final String title;
   final int pageCount;
-  final String date;
-  final String type; // "pdf" hoặc "ppt"
+  final DateTime createdAt;
+  final String type;       // 'pdf' | 'txt'
+  final String status;     // 'processing' | 'ready' | 'failed'
+  final String? notebookId;
 
-  MockDocument({
+  Document({
     required this.id,
     required this.title,
     required this.pageCount,
-    required this.date,
+    required this.createdAt,
     required this.type,
+    this.status = 'ready',
+    this.notebookId,
   });
+
+  /// Nhãn thời gian ngắn gọn hiển thị bên góc phải card.
+  /// - Cùng ngày hôm nay → "HH:mm"
+  /// - Trong vòng 7 ngày → "dd/MM"
+  /// - Cũ hơn → "dd/MM/yy"
+  String get shortTime {
+    final now = DateTime.now();
+    final diff = now.difference(createdAt).inDays;
+    if (diff == 0) return DateFormat('HH:mm').format(createdAt);
+    if (diff < 7)  return DateFormat('dd/MM').format(createdAt);
+    return DateFormat('dd/MM/yy').format(createdAt);
+  }
+
+  /// Label loại file
+  String get typeLabel => type.toUpperCase();
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Tính nhãn nhóm ngày cho một DateTime.
+/// Thứ tự ưu tiên: Hôm nay > Hôm qua > Tuần này > Tháng M/YYYY
+String _dateGroupLabel(DateTime dt) {
+  final now   = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final docDay = DateTime(dt.year, dt.month, dt.day);
+  final diff  = today.difference(docDay).inDays;
+
+  if (diff == 0) return 'Hôm nay';
+  if (diff == 1) return 'Hôm qua';
+  if (diff < 7)  return 'Tuần này';
+
+  // Nhóm theo tháng/năm — dùng hardcode tiếng Việt vì intl vi locale chưa init
+  const viMonths = [
+    '', 'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4',
+    'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8',
+    'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
+  ];
+  return '${viMonths[dt.month]} ${dt.year}';
+}
+
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 class DocumentProvider extends ChangeNotifier {
-  // Từ khoá tìm kiếm hiện tại (cập nhật real-time khi người dùng gõ)
   String _searchQuery = '';
-
-  // _isLoading = true → đang gọi API (hiển thị skeleton loading)
   bool _isLoading = false;
-
-  // _hasLoaded = true → đã tải xong, không gọi API lại khi rebuild
   bool _hasLoaded = false;
 
-  // Danh sách đầy đủ — khởi tạo sẵn mock data làm fallback
-  final List<MockDocument> _allDocs = [
-    MockDocument(
+  // In-memory session study counter: docId → count
+  // Tăng khi user mở Chat/Quiz từ HomeScreen. Reset khi khởi động lại app.
+  final Map<String, int> _studyCounts = {};
+
+  // Danh sách đầy đủ — khởi tạo mock data để fallback khi backend chưa có
+  final List<Document> _allDocs = [
+    Document(
       id: '1',
-      title: 'Chương 1: Giới thiệu về AI',
+      title: 'Chương 1: Giới thiệu về Kinh tế học',
       pageCount: 24,
-      date: '2 ngày trước',
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
       type: 'pdf',
+      status: 'ready',
     ),
-    MockDocument(
+    Document(
       id: '2',
       title: 'Cơ bản về Học máy (Machine Learning)',
       pageCount: 45,
-      date: '3 ngày trước',
+      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
       type: 'pdf',
+      status: 'processing',
     ),
-    MockDocument(
+    Document(
       id: '3',
-      title: 'Kiến trúc Mạng Nơ-ron',
+      title: 'Kiến trúc Mạng Nơ-ron Nhân tạo',
       pageCount: 12,
-      date: '1 tuần trước',
-      type: 'ppt',
+      createdAt: DateTime.now().subtract(const Duration(days: 1, hours: 3)),
+      type: 'txt',
+      status: 'ready',
     ),
-    MockDocument(
+    Document(
       id: '4',
       title: 'Tổng quan về Thị giác Máy tính',
       pageCount: 30,
-      date: '2 tuần trước',
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
       type: 'pdf',
+      status: 'ready',
     ),
-    MockDocument(
+    Document(
       id: '5',
-      title: 'Xử lý Ngôn ngữ Tự nhiên',
+      title: 'Xử lý Ngôn ngữ Tự nhiên và ứng dụng',
       pageCount: 56,
-      date: '3 tuần trước',
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
       type: 'pdf',
+      status: 'failed',
     ),
-    MockDocument(
+    Document(
       id: '6',
-      title: 'Học tăng cường',
+      title: 'Học tăng cường — Lý thuyết và thực hành',
       pageCount: 18,
-      date: '1 tháng trước',
+      createdAt: DateTime.now().subtract(const Duration(days: 38)),
       type: 'pdf',
+      status: 'ready',
     ),
   ];
 
-  /// Getter danh sách tài liệu — tự động lọc theo searchQuery.
-  ///
-  /// Thuật toán lọc:
-  ///   - Nếu đang tải → trả về [] (UI hiển thị skeleton)
-  ///   - Nếu searchQuery rỗng → trả về toàn bộ danh sách
-  ///   - Ngược lại → lọc: title.toLowerCase().contains(query.toLowerCase())
-  ///     Dùng toLowerCase() để so sánh không phân biệt chữ hoa/thường
-  List<MockDocument> get documents {
-    if (_isLoading) return [];
-    if (_searchQuery.isEmpty) return _allDocs;
-    return _allDocs
-        .where(
-          (doc) => doc.title.toLowerCase().contains(_searchQuery.toLowerCase()),
-        )
-        .toList();
-  }
+  // ── Getters ──────────────────────────────────────────────────────────────────
 
   String get searchQuery => _searchQuery;
-  bool get isLoading => _isLoading;
+  bool   get isLoading   => _isLoading;
 
-  /// Tải danh sách tài liệu từ backend FastAPI.
+  /// Danh sách sau khi lọc theo searchQuery.
+  List<Document> get documents {
+    if (_isLoading) return [];
+    if (_searchQuery.isEmpty) return List.unmodifiable(_allDocs);
+    final q = _searchQuery.toLowerCase();
+    return _allDocs.where((d) => d.title.toLowerCase().contains(q)).toList();
+  }
+
+  /// Tổng số trang của tất cả tài liệu.
+  int get totalPageCount => _allDocs.fold(0, (sum, d) => sum + d.pageCount);
+
+  /// Số tài liệu đã được học ít nhất 1 lần.
+  int get studiedCount => _studyCounts.values.where((v) => v > 0).length;
+
+  /// Study count của một document cụ thể.
+  int studyCountOf(String docId) => _studyCounts[docId] ?? 0;
+
+  /// Danh sách được nhóm theo ngày — trả về LinkedHashMap để giữ thứ tự chèn.
   ///
-  /// Guard condition: chỉ tải 1 lần (_hasLoaded) và không tải song song (_isLoading).
-  /// Lý do: HomeScreen có thể rebuild nhiều lần, không muốn gọi API lặp lại.
+  /// Thuật toán:
+  ///   1. Sắp xếp docs theo createdAt giảm dần (mới nhất trước)
+  ///   2. Với mỗi doc, tính _dateGroupLabel(doc.createdAt)
+  ///   3. Chèn vào LinkedHashMap[label] — key xuất hiện theo đúng thứ tự gặp đầu tiên
+  LinkedHashMap<String, List<Document>> get groupedDocuments {
+    final filtered = documents; // đã lọc searchQuery
+    final sorted   = [...filtered]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // ignore: prefer_collection_literals — LinkedHashMap preserves insertion order (required for date groups)
+    final map = LinkedHashMap<String, List<Document>>();
+    for (final doc in sorted) {
+      final label = _dateGroupLabel(doc.createdAt);
+      map.putIfAbsent(label, () => []).add(doc);
+    }
+    return map;
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
+  /// Tăng số lần học của một tài liệu (gọi khi user mở Chat/Quiz từ Home).
+  void incrementStudyCount(String docId) {
+    _studyCounts[docId] = (_studyCounts[docId] ?? 0) + 1;
+    notifyListeners();
+  }
+
+  /// Cập nhật từ khoá tìm kiếm và rebuild danh sách ngay lập tức.
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  // ── Load / Refresh ────────────────────────────────────────────────────────────
+
   Future<void> loadDocuments() async {
-    if (_hasLoaded || _isLoading) return; // Guard: tránh gọi trùng
+    if (_hasLoaded || _isLoading) return;
 
     _isLoading = true;
     notifyListeners();
 
-    // Kiểm tra URL placeholder → dùng mock data ngay không cần HTTP call
-    if (AppConstants.backendBaseUrl.contains('your-backend-railway-url')) {
-      await Future.delayed(const Duration(milliseconds: 900)); // Delay giả lập network
+    if (AppConstants.backendBaseUrl.contains('your-backend')) {
+      await Future.delayed(const Duration(milliseconds: 900));
       _isLoading = false;
       _hasLoaded = true;
       notifyListeners();
@@ -141,7 +220,6 @@ class DocumentProvider extends ChangeNotifier {
     }
 
     try {
-      // Lấy Firebase user hiện tại
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _isLoading = false;
@@ -149,61 +227,55 @@ class DocumentProvider extends ChangeNotifier {
         return;
       }
 
-      // Lấy JWT ID Token để xác thực với backend
-      // Backend sẽ decode token → lấy uid → truy vấn tài liệu của user đó
       final idToken = await user.getIdToken();
-
-      // Gọi GET /documents với timeout 5 giây (danh sách không cần lâu)
       final response = await http.get(
         Uri.parse('${AppConstants.backendBaseUrl}/documents'),
         headers: {
           'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
         },
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
-        // Parse JSON array → List<MockDocument>
-        // Backend trả về: [{"id": "uuid", "title": "...", "page_count": 24, ...}]
         final List<dynamic> data = json.decode(response.body);
-        _allDocs.clear(); // Xóa mock data, thay bằng dữ liệu thật
-        for (var doc in data) {
-          _allDocs.add(
-            MockDocument(
-              id: doc['id']?.toString() ?? '',
-              title: doc['title'] ?? 'Không có tiêu đề',
-              pageCount: doc['page_count'] ?? 0,
-              date: doc['created_at'] ?? 'Vừa xong',
-              type: doc['type'] ?? 'pdf',
-            ),
-          );
+        _allDocs.clear();
+
+        for (final doc in data) {
+          // Parse createdAt — backend trả về ISO 8601 (UTC), convert sang local
+          DateTime createdAt;
+          try {
+            createdAt = DateTime.parse(
+              doc['created_at'] ?? '',
+            ).toLocal();
+          } catch (_) {
+            createdAt = DateTime.now();
+          }
+
+          _allDocs.add(Document(
+            id:         doc['id']?.toString() ?? '',
+            title:      doc['title'] ?? 'Không có tiêu đề',
+            pageCount:  doc['page_count'] ?? 0,
+            createdAt:  createdAt,
+            type:       doc['type'] ?? 'pdf',
+            status:     doc['status'] ?? 'ready',
+            notebookId: doc['notebook_id']?.toString(),
+          ));
         }
         _hasLoaded = true;
       } else {
-        debugPrint('Failed to load documents: ${response.statusCode}');
-        // Không clear _allDocs → mock data vẫn hiển thị
+        debugPrint('Tải tài liệu thất bại: ${response.statusCode}');
       }
     } catch (e) {
-      // Lỗi mạng/timeout → giữ mock data làm fallback thay vì crash
-      debugPrint('Error loading documents from backend (using mock fallback): $e');
-      _hasLoaded = true; // Đánh dấu đã "tải" để không retry liên tục
+      debugPrint('Lỗi tải tài liệu (dùng mock fallback): $e');
+      _hasLoaded = true;
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// Buộc tải lại danh sách từ backend — bypass guard _hasLoaded.
-  /// Gọi khi: pull-to-refresh, sau khi upload file mới.
   Future<void> refresh() async {
     _hasLoaded = false;
     await loadDocuments();
-  }
-
-  /// Cập nhật từ khoá tìm kiếm và rebuild danh sách ngay lập tức.
-  /// Được gọi mỗi khi người dùng gõ một ký tự vào ô search.
-  void setSearchQuery(String query) {
-    _searchQuery = query;
-    notifyListeners(); // Trigger rebuild → getter documents tự lọc lại
   }
 }
