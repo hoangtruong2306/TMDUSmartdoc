@@ -93,6 +93,7 @@ class DocumentCardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: AppSpacing.cardPaddingCompact,
+      clipBehavior: Clip.hardEdge, // tránh RenderFlex overflow khi cell nhỏ (grid)
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: AppRadius.card,
@@ -101,6 +102,7 @@ class DocumentCardSkeleton extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -109,11 +111,11 @@ class DocumentCardSkeleton extends StatelessWidget {
               SkeletonBox(width: 26, height: 26, borderRadius: AppRadius.chip),
             ],
           ),
-          const SizedBox(height: 16), // fixed height thay Spacer (tránh unbounded constraint trong SliverList)
+          AppSpacing.vSm,                              // 8px (giảm từ 16)
           const SkeletonBox(height: 14),
-          AppSpacing.vSm,
+          AppSpacing.vXs,                              // 4px
           const SkeletonBox(width: 120, height: 14),
-          AppSpacing.vMd,
+          AppSpacing.vSm,                              // 8px (giảm từ vMd=16)
           const SkeletonBox(width: 88, height: 12),
           AppSpacing.vXs,
           const SkeletonBox(width: 72, height: 12),

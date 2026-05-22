@@ -135,8 +135,54 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  /// Đóng màn hình — clear state để tránh dùng lại lần sau
-  void _close() {
+  // ── Exit confirmation ────────────────────────────────────────────────────────
+
+  /// Hiển thị dialog xác nhận thoát khi đang làm bài.
+  /// Trả về true ngay (thoát tự do) nếu người dùng ở màn setup hoặc kết quả.
+  Future<bool> _showExitDialog() async {
+    final provider = context.read<QuizProvider>();
+    // Chưa bắt đầu hoặc đã xem kết quả → cho thoát không cần hỏi
+    if (!_setupDone || provider.showResult) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // bắt buộc chọn nút, không tap ngoài để đóng
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFFA726), size: 22),
+            SizedBox(width: 8),
+            Flexible(child: Text('Thoát bài luyện thi?')),
+          ],
+        ),
+        content: const Text(
+          'Tiến trình bài làm hiện tại sẽ không được lưu.\nBạn có chắc muốn kết thúc?',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          // Hủy → tiếp tục làm bài
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Tiếp tục ôn'),
+          ),
+          // Xác nhận → thoát và xóa state
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Kết thúc'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  /// Đóng màn hình — hỏi xác nhận nếu đang làm bài, thoát tự do nếu setup/kết quả
+  Future<void> _close() async {
+    final shouldExit = await _showExitDialog();
+    if (!mounted || !shouldExit) return;
     context.read<QuizProvider>().clear();
     context.pop();
   }
@@ -149,7 +195,19 @@ class _QuizScreenState extends State<QuizScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<QuizProvider>();
 
-    return Scaffold(
+    // PopScope: chặn Android back button khi đang làm bài để hỏi xác nhận
+    return PopScope(
+      canPop: false, // luôn intercept, logic quyết định bên trong
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldExit = await _showExitDialog();
+        if (!mounted || !shouldExit) return;
+        // ignore: use_build_context_synchronously — mounted được kiểm tra ngay trên
+        context.read<QuizProvider>().clear();
+        // ignore: use_build_context_synchronously
+        context.pop();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
@@ -158,7 +216,7 @@ class _QuizScreenState extends State<QuizScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           tooltip: 'Đóng',
-          onPressed: _close,
+          onPressed: _close, // async — hỏi xác nhận nếu đang làm bài
         ),
         title: Text(
           widget.notebookName,
@@ -207,7 +265,8 @@ class _QuizScreenState extends State<QuizScreen> {
         ),
         child: _buildBody(provider),
       ),
-    );
+    ), // Scaffold
+    ); // PopScope
   }
 
   // ── Switch giữa các view theo state ────────────────────────────────────────

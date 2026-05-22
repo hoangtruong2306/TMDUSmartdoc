@@ -1,7 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+// Sprint 3 — Voice Input
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../core/constants.dart';
 import '../../shared/widgets/widgets.dart';
 import '../home/providers/document_provider.dart';
@@ -477,6 +482,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   AppSpacing.hSm,
 
+                  // Voice button — giữ để nói tiếng Việt → tự điền + gửi
+                  _VoiceButton(
+                    onResult: (text) {
+                      if (text.isEmpty) return;
+                      _controller.text = text;
+                      HapticFeedback.lightImpact();
+                      context.read<ChatProvider>().sendMessage(text);
+                      _controller.clear();
+                      _scrollToBottom();
+                    },
+                  ),
+                  AppSpacing.hXs,
+
                   // Send button
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _controller,
@@ -669,6 +687,145 @@ class _ChatScreenState extends State<ChatScreen> {
     if (diff.inDays < 1) return '${diff.inHours} giờ';
     if (diff.inDays < 7) return '${diff.inDays} ngày';
     return '${dt.day}/${dt.month}';
+  }
+}
+
+// =============================================================================
+// VOICE BUTTON — Sprint 3: Voice Input
+// Tap để bắt đầu nhận giọng nói tiếng Việt.
+// Nút nhấp nháy đỏ khi đang nghe; im lặng 3s → tự dừng và gửi kết quả.
+// =============================================================================
+
+class _VoiceButton extends StatefulWidget {
+  /// Callback trả về văn bản đã nhận dạng được (finalResult).
+  final ValueChanged<String> onResult;
+
+  const _VoiceButton({required this.onResult});
+
+  @override
+  State<_VoiceButton> createState() => _VoiceButtonState();
+}
+
+class _VoiceButtonState extends State<_VoiceButton>
+    with SingleTickerProviderStateMixin {
+  final SpeechToText _speech = SpeechToText();
+  bool _listening = false;
+
+  // Animation controller cho hiệu ứng nhấp nháy khi đang nghe
+  late final AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true); // tự động lặp lại
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    _speech.stop();
+    super.dispose();
+  }
+
+  /// Bật/tắt voice recognition.
+  Future<void> _toggle() async {
+    if (_listening) {
+      // Đang nghe → dừng lại
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+
+    // Xin quyền microphone lần đầu
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cần quyền microphone để dùng tính năng giọng nói'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Khởi tạo speech engine
+    final available = await _speech.initialize(
+      onError: (e) {
+        debugPrint('[VoiceButton] STT error: ${e.errorMsg}');
+        if (mounted) setState(() => _listening = false);
+      },
+      onStatus: (status) {
+        // done / notListening → reset trạng thái
+        if (status == 'done' || status == 'notListening') {
+          if (mounted) setState(() => _listening = false);
+        }
+      },
+    );
+
+    if (!available) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thiết bị không hỗ trợ nhận dạng giọng nói'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _listening = true);
+    HapticFeedback.mediumImpact();
+
+    await _speech.listen(
+      onResult: (result) {
+        // Chỉ xử lý khi kết quả là finalResult (người dùng đã nói xong)
+        if (result.finalResult && result.recognizedWords.isNotEmpty) {
+          widget.onResult(result.recognizedWords);
+          if (mounted) setState(() => _listening = false);
+        }
+      },
+      // v7.x: tất cả options gom vào SpeechListenOptions
+      listenOptions: SpeechListenOptions(
+        localeId: 'vi_VN',                         // tiếng Việt
+        listenFor: const Duration(seconds: 30),    // tối đa 30s
+        pauseFor: const Duration(seconds: 3),      // dừng sau 3s im lặng
+        partialResults: false,                     // chỉ lấy finalResult
+        cancelOnError: true,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _toggle,
+      child: AnimatedBuilder(
+        animation: _pulseCtrl,
+        builder: (_, __) {
+          // Khi đang nghe: nền đỏ nhấp nháy; khi nghỉ: trong suốt
+          final bgAlpha = _listening ? (0.08 + 0.10 * _pulseCtrl.value) : 0.0;
+          return Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.error.withValues(alpha: bgAlpha),
+            ),
+            child: Icon(
+              _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+              size: 22,
+              color: _listening ? AppColors.error : AppColors.textSecondary,
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 

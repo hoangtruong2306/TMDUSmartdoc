@@ -10,7 +10,11 @@ import '../home/providers/document_provider.dart';
 import '../notebooks/providers/notebook_provider.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key});
+  /// notebookId được truyền trực tiếp khi navigate từ NotebookDetail
+  /// (tránh lỗi duplicate GlobalKey với GoRouter ShellRoute)
+  final String? notebookId;
+
+  const UploadScreen({super.key, this.notebookId});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -21,22 +25,14 @@ class _UploadScreenState extends State<UploadScreen> {
   String? _returnNotebookId;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Đọc notebook_id từ navigation extra (khi navigate từ NotebookDetailScreen)
-    final extra = GoRouterState.of(context).extra;
-    if (extra is Map<String, dynamic> && _selectedNotebookId == null) {
-      final notebookId = extra['notebook_id']?.toString();
-      if (notebookId != null && notebookId.isNotEmpty) {
-        _selectedNotebookId = notebookId;
-        _returnNotebookId = notebookId;
-      }
-    }
-  }
-
-  @override
   void initState() {
     super.initState();
+    // Truyền notebookId trực tiếp qua constructor (tránh lỗi GoRouter key)
+    final id = widget.notebookId;
+    if (id != null && id.isNotEmpty) {
+      _selectedNotebookId = id;
+      _returnNotebookId = id;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<NotebookProvider>().loadNotebooks();
     });
@@ -70,9 +66,9 @@ class _UploadScreenState extends State<UploadScreen> {
       await documentProvider.refresh();
       if (!mounted) return;
       
-      // Nếu upload từ notebook detail → quay về đó
+      // Nếu upload từ notebook detail → pop về (tránh duplicate GlobalKey)
       if (_returnNotebookId != null) {
-        context.go('/notebook/${_returnNotebookId}');
+        context.pop();
       } else {
         context.go('/home');
       }

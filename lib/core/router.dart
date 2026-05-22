@@ -46,6 +46,8 @@ import '../features/profile/profile_screen.dart';
 import '../features/quiz/screens/quiz_screen.dart';
 import '../features/quiz/screens/quiz_history_screen.dart';
 import '../features/quiz/screens/quiz_review_screen.dart';
+import '../features/flashcards/screens/flashcard_setup_screen.dart';
+import '../features/flashcards/screens/flashcard_history_screen.dart';
 import '../shared/widgets/main_scaffold.dart';
 import 'constants.dart';
 
@@ -72,7 +74,7 @@ final GlobalKey<NavigatorState> _shellNavigatorKey =
 
 // Danh sách route cần đăng nhập — dùng startsWith() để bắt cả sub-route
 // vd: /home/document/123 cũng sẽ bị guard
-const _protectedRoutes = ['/home', '/notebooks', '/notebook', '/upload', '/chat', '/profile', '/quiz'];
+  const _protectedRoutes = ['/home', '/notebooks', '/notebook', '/upload', '/chat', '/profile', '/quiz', '/flashcards'];
 
 final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -136,6 +138,19 @@ final router = GoRouter(
       },
     ),
 
+    // Upload từ notebook detail — ngoài ShellRoute để tránh duplicate GlobalKey crash
+    // UploadScreen nhận notebookId qua constructor, pop() khi hoàn tất để về NotebookDetail
+    GoRoute(
+      path: '/notebook/:id/upload',
+      pageBuilder: (context, state) {
+        final notebookId = state.pathParameters['id']!;
+        return buildPageTransition(
+          state,
+          UploadScreen(notebookId: notebookId),
+        );
+      },
+    ),
+
     // Route Quiz AI — full-screen, không có BottomNav
     // Path: /quiz/:notebookId?name=<encodedName>
     // notebookId  → để gọi API /quiz/generate
@@ -181,6 +196,42 @@ final router = GoRouter(
         return buildPageTransition(
           state,
           QuizReviewScreen(sessionId: sessionId),
+        );
+      },
+    ),
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FLASH CARDS — Học thẻ ghi nhớ từ tài liệu
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Setup: chọn số lượng thẻ → gọi API generate
+    GoRoute(
+      path: '/flashcards/:notebookId',
+      pageBuilder: (context, state) {
+        final notebookId   = state.pathParameters['notebookId']!;
+        final notebookName = state.uri.queryParameters['name'] ?? 'Notebook';
+        return buildPageTransition(
+          state,
+          FlashCardSetupScreen(
+            notebookId:   notebookId,
+            notebookName: notebookName,
+          ),
+        );
+      },
+    ),
+
+    // Lịch sử flashcard
+    GoRoute(
+      path: '/flashcards/history/:notebookId',
+      pageBuilder: (context, state) {
+        final notebookId   = state.pathParameters['notebookId']!;
+        final notebookName = state.uri.queryParameters['name'] ?? 'Notebook';
+        return buildPageTransition(
+          state,
+          FlashCardHistoryScreen(
+            notebookId:   notebookId,
+            notebookName: notebookName,
+          ),
         );
       },
     ),

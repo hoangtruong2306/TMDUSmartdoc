@@ -1,0 +1,27 @@
+# =============================================================================
+# flutter_native_splash — TDMU SmartDoc
+# Màu nền TDMU Blue #1565C0 khi khởi động app
+#
+# Để tạo splash screen, chạy:
+#   dart run flutter_native_splash:create
+#
+# Để xóa splash screen đã tạo:
+#   dart run flutter_native_splash:remove
+#
+# Thêm logo: đặt file logo_white.png (1024x1024, nền trong suốt) vào
+# assets/images/ rồi bỏ comment dòng "image:" bên dưới.
+# =============================================================================
+
+flutter_native_splash:
+  color: "#1565C0"          # Light mode background
+  color_dark: "#0D47A1"     # Dark mode background
+
+  # Logo trắng trên nền xanh — bỏ comment khi có file
+  # image: assets/images/logo_white.png
+  # image_dark: assets/images/logo_white.png
+
+  android: true
+  ios: false                 # Chỉ cần Android cho demo TDMU
+
+  android_gravity: center
+  fullscreen: false

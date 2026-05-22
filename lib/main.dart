@@ -10,6 +10,7 @@ import 'features/upload/providers/upload_provider.dart';
 import 'features/notebooks/providers/notebook_provider.dart';
 import 'features/quiz/providers/quiz_provider.dart';
 import 'features/quiz/providers/quiz_history_provider.dart';
+import 'features/flashcards/providers/flashcard_provider.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -31,6 +32,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => NotebookProvider()),
         ChangeNotifierProvider(create: (_) => QuizProvider()),
         ChangeNotifierProvider(create: (_) => QuizHistoryProvider()),
+        ChangeNotifierProvider(create: (_) => FlashCardProvider()),
       ],
       child: const TdmuSmartDocApp(),
     ),

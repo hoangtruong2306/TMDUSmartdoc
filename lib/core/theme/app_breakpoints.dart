@@ -44,7 +44,7 @@ class AppBreakpoints {
     if (width < 340) return 1.7;
     if (width < 380) return 0.74;
     if (width < compact) return 0.82;
-    if (width < medium) return 1.05;
+    if (width < medium) return 0.85; // 1.05 → 0.85: cell cao hơn để chứa đủ nội dung card
     return 1.0;
   }
 }
