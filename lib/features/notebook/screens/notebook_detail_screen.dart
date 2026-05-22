@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../notebooks/providers/notebook_provider.dart';
@@ -196,10 +199,46 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
     });
   }
 
-  void _showUploadSheet() {
+  void _navigateToUpload() {
     // Dùng route riêng ngoài ShellRoute để tránh duplicate GlobalKey crash
-    // ('/upload' là ShellRoute child → push từ non-shell gây !keyReservation assertion)
     context.push('/notebook/${widget.notebookId}/upload');
+  }
+
+  /// Mở bottom sheet cho phép user chọn tài liệu đã upload để thêm vào notebook.
+  void _showAddSheet() {
+    final notebookProvider = context.read<NotebookProvider>();
+    final nb = notebookProvider.notebooks.firstWhere(
+      (n) => n.id == widget.notebookId,
+      orElse: () => notebookProvider.notebooks.isNotEmpty
+          ? notebookProvider.notebooks.first
+          : Notebook(
+              id: widget.notebookId,
+              name: 'Notebook',
+              color: '#6750A4',
+              updatedAt: DateTime.now(),
+            ),
+    );
+    final accent = _parseHex(nb.color);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _DocumentPickerSheet(
+        notebookId: widget.notebookId,
+        alreadyInNotebook: _docsProvider.documents.map((d) => d.id).toSet(),
+        accent: accent,
+        onUpload: () {
+          Navigator.pop(ctx);
+          _navigateToUpload();
+        },
+        onAssigned: () => _docsProvider.refresh(),
+      ),
+    );
   }
 
   @override
@@ -532,7 +571,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                       ),
                       if (!_isSelectionMode)
                         TextButton.icon(
-                          onPressed: _showUploadSheet,
+                          onPressed: _showAddSheet,
                           icon: Icon(Icons.add, size: 16, color: accent),
                           label: Text('Them', style: TextStyle(color: accent)),
                         ),
@@ -564,7 +603,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                       hasScrollBody: false,
                       child: _EmptyNotebookDocs(
                         accent: accent,
-                        onUpload: _showUploadSheet,
+                        onUpload: _showAddSheet,
                       ),
                     );
                   }
@@ -718,14 +757,14 @@ class _EmptyNotebookDocs extends StatelessWidget {
             ).appScaleIn(),
             AppSpacing.vLg,
             Text(
-              'Chua co tai lieu',
+              'Chưa có tài liệu',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ).appEntrance(delay: const Duration(milliseconds: 100)),
             AppSpacing.vSm,
             Text(
-              'Tai len tai lieu PDF de nh vao notebook nay\nva nhan tom tat thong minh tu AI.',
+              'Thêm tài liệu vào notebook này\nđể nhận tóm tắt thông minh từ AI.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
@@ -733,12 +772,419 @@ class _EmptyNotebookDocs extends StatelessWidget {
             ).appEntrance(delay: const Duration(milliseconds: 160)),
             AppSpacing.vXl,
             CustomButton(
-              label: 'Tai tai lieu len',
+              label: 'Thêm tài liệu',
               onPressed: onUpload,
-              icon: Icons.upload_file_rounded,
+              icon: Icons.add_rounded,
             ).appEntrance(delay: const Duration(milliseconds: 220)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Document Picker Sheet ────────────────────────────────────────────────────
+// Hiển thị tất cả tài liệu của user (chưa thuộc notebook này).
+// User tick chọn → nhấn "Thêm" → gọi POST /documents/assign.
+
+class _DocumentPickerSheet extends StatefulWidget {
+  final String notebookId;
+  final Set<String> alreadyInNotebook; // IDs đã có trong notebook → ẩn
+  final Color accent;
+  final VoidCallback onUpload;   // Khi user chọn upload tài liệu mới
+  final VoidCallback onAssigned; // Callback sau khi gán thành công
+
+  const _DocumentPickerSheet({
+    required this.notebookId,
+    required this.alreadyInNotebook,
+    required this.accent,
+    required this.onUpload,
+    required this.onAssigned,
+  });
+
+  @override
+  State<_DocumentPickerSheet> createState() => _DocumentPickerSheetState();
+}
+
+class _DocumentPickerSheetState extends State<_DocumentPickerSheet> {
+  // Tất cả tài liệu của user (không lọc notebook)
+  List<NotebookDocument> _allDocs = [];
+  bool _isLoading = true;
+  bool _isAssigning = false;
+  // Tập IDs user đã tick chọn trong sheet này
+  final Set<String> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAllDocs();
+  }
+
+  Future<void> _loadAllDocs() async {
+    final docs = await NotebookDocumentsProvider.fetchAllUserDocuments();
+    if (!mounted) return;
+    setState(() {
+      // Lọc bỏ những tài liệu đã thuộc notebook này
+      _allDocs = docs
+          .where((d) => !widget.alreadyInNotebook.contains(d.id))
+          .toList();
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _confirmAssign() async {
+    if (_selected.isEmpty || _isAssigning) return;
+    setState(() => _isAssigning = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final idToken = await user.getIdToken();
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents/assign'),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'doc_ids': _selected.toList(),
+          'notebook_id': widget.notebookId,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        final count = result['assigned_count'] as int? ?? _selected.length;
+
+        widget.onAssigned(); // Reload danh sách notebook
+        Navigator.pop(context);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã thêm $count tài liệu vào notebook'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        setState(() => _isAssigning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lỗi: Không thể thêm tài liệu'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isAssigning = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lỗi kết nối'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Column(
+          children: [
+            // ── Handle & Header ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Column(
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Thêm tài liệu',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (_selected.isNotEmpty)
+                        Text(
+                          'Đã chọn ${_selected.length}',
+                          style: TextStyle(
+                            color: widget.accent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+            Divider(color: AppColors.border, height: 1),
+
+            // ── Upload mới option ────────────────────────────────────────────
+            ListTile(
+              onTap: widget.onUpload,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: widget.accent.withValues(alpha: 0.1),
+                  borderRadius: AppRadius.control,
+                ),
+                child: Icon(
+                  Icons.upload_file_rounded,
+                  color: widget.accent,
+                  size: 20,
+                ),
+              ),
+              title: Text(
+                'Upload tài liệu mới',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: widget.accent,
+                ),
+              ),
+              subtitle: Text(
+                'Tải lên file PDF hoặc TXT mới',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              trailing: Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: widget.accent,
+              ),
+            ),
+
+            Divider(color: AppColors.border, height: 1),
+
+            // ── List tiêu đề ─────────────────────────────────────────────────
+            if (!_isLoading)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _allDocs.isEmpty
+                        ? 'Tài liệu đã có trong notebook'
+                        : 'Chọn từ tài liệu đã upload',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppColors.textTertiary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
+            // ── Documents list ───────────────────────────────────────────────
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _allDocs.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          itemCount: _allDocs.length,
+                          itemBuilder: (ctx, index) {
+                            final doc = _allDocs[index];
+                            final isSelected = _selected.contains(doc.id);
+                            final isPdf = doc.type.toLowerCase() == 'pdf';
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? widget.accent.withValues(alpha: 0.05)
+                                    : AppColors.surfaceElevated,
+                                borderRadius: AppRadius.card,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? widget.accent
+                                      : AppColors.border,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: ListTile(
+                                contentPadding: AppSpacing.cardPaddingCompact,
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      _selected.remove(doc.id);
+                                    } else {
+                                      _selected.add(doc.id);
+                                    }
+                                  });
+                                },
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: widget.accent.withValues(alpha: 0.1),
+                                    borderRadius: AppRadius.control,
+                                  ),
+                                  child: Icon(
+                                    isPdf
+                                        ? Icons.picture_as_pdf_rounded
+                                        : Icons.description_rounded,
+                                    color: widget.accent,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text(
+                                  doc.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                                subtitle: Text(
+                                  isPdf
+                                      ? '${doc.pageCount} trang · PDF'
+                                      : 'Tài liệu văn bản',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: AppColors.textTertiary,
+                                      ),
+                                ),
+                                trailing: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: Icon(
+                                    isSelected
+                                        ? Icons.check_circle_rounded
+                                        : Icons.circle_outlined,
+                                    key: ValueKey(isSelected),
+                                    color: isSelected
+                                        ? widget.accent
+                                        : AppColors.border,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+
+            // ── Confirm button ───────────────────────────────────────────────
+            if (_allDocs.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding + 16),
+                child: FilledButton(
+                  onPressed: _selected.isEmpty || _isAssigning
+                      ? null
+                      : _confirmAssign,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                    backgroundColor: widget.accent,
+                    disabledBackgroundColor:
+                        widget.accent.withValues(alpha: 0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.control,
+                    ),
+                  ),
+                  child: _isAssigning
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          _selected.isEmpty
+                              ? 'Chọn tài liệu để thêm'
+                              : 'Thêm ${_selected.length} tài liệu vào notebook',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.inbox_rounded,
+            size: 56,
+            color: AppColors.textTertiary.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Tất cả tài liệu đã có\ntrong notebook này',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Upload tài liệu mới để thêm vào notebook.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 24),
+          OutlinedButton.icon(
+            onPressed: widget.onUpload,
+            icon: const Icon(Icons.upload_file_rounded, size: 16),
+            label: const Text('Upload tài liệu mới'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: widget.accent,
+              side: BorderSide(color: widget.accent),
+              shape: RoundedRectangleBorder(
+                borderRadius: AppRadius.control,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

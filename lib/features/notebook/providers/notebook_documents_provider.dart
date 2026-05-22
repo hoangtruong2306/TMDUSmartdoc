@@ -11,6 +11,7 @@ class NotebookDocument {
   final String type;
   final int pageCount;
   final DateTime createdAt;
+  final String? notebookId; // null nếu chưa được gán vào notebook nào
 
   NotebookDocument({
     required this.id,
@@ -18,6 +19,7 @@ class NotebookDocument {
     required this.type,
     this.pageCount = 0,
     required this.createdAt,
+    this.notebookId,
   });
 }
 
@@ -66,6 +68,7 @@ class NotebookDocumentsProvider extends ChangeNotifier {
             type: doc['type'] ?? 'pdf',
             pageCount: doc['page_count'] ?? 0,
             createdAt: DateTime.tryParse(doc['created_at'] ?? '') ?? DateTime.now(),
+            notebookId: doc['notebook_id']?.toString(),
           ));
         }
       }
@@ -148,6 +151,76 @@ class NotebookDocumentsProvider extends ChangeNotifier {
       debugPrint('Lỗi xóa nhiều tài liệu: $e');
       return false;
     }
+  }
+
+  /// Lấy toàn bộ tài liệu của user (không lọc theo notebook).
+  /// Dùng cho Document Picker Sheet khi user muốn gán tài liệu vào notebook.
+  static Future<List<NotebookDocument>> fetchAllUserDocuments() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    try {
+      final idToken = await user.getIdToken();
+      final response = await http.get(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents'),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((doc) => NotebookDocument(
+          id: doc['id']?.toString() ?? '',
+          title: doc['title'] ?? 'Không có tiêu đề',
+          type: doc['type'] ?? 'pdf',
+          pageCount: doc['page_count'] ?? 0,
+          createdAt: DateTime.tryParse(doc['created_at'] ?? '') ?? DateTime.now(),
+          notebookId: doc['notebook_id']?.toString(),
+        )).where((d) => d.id.isNotEmpty).toList();
+      }
+    } catch (e) {
+      debugPrint('Lỗi tải tất cả documents: $e');
+    }
+    return [];
+  }
+
+  /// Gán danh sách documents vào notebook này.
+  /// Trả về số lượng tài liệu được gán thành công.
+  Future<int> assignDocumentsToNotebook(List<String> docIds) async {
+    if (docIds.isEmpty) return 0;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+      final idToken = await user.getIdToken();
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents/assign'),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'doc_ids': docIds,
+          'notebook_id': notebookId,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        final assignedCount = result['assigned_count'] as int? ?? 0;
+        if (assignedCount > 0) {
+          // Reload để cập nhật danh sách
+          await refresh();
+        }
+        return assignedCount;
+      }
+    } catch (e) {
+      debugPrint('Lỗi gán tài liệu vào notebook: $e');
+    }
+    return 0;
   }
 
   Future<void> refresh() async {

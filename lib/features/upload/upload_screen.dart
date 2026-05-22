@@ -39,9 +39,22 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _pickAndUpload() async {
+    final notebookId = _selectedNotebookId;
+
+    // ── Kiểm tra notebook được chọn (REQUIRED) ─────────────────────────────
+    if (notebookId == null || notebookId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn notebook trước khi upload'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final uploadProvider = context.read<UploadProvider>();
     final documentProvider = context.read<DocumentProvider>();
-    final notebookId = _selectedNotebookId;
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -53,10 +66,11 @@ class _UploadScreenState extends State<UploadScreen> {
     final file = result.files.first;
     if (file.bytes == null) return;
 
+    // ── Upload với notebook_id (REQUIRED) ──────────────────────────────────
     final success = await uploadProvider.uploadFile(
       file.name,
       file.bytes!,
-      notebookId: notebookId,
+      notebookId: notebookId,  // pass as required parameter
     );
 
     if (!mounted) return;

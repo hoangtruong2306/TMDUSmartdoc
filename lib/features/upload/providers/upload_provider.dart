@@ -62,7 +62,21 @@ class UploadProvider extends ChangeNotifier {
   /// [fileBytes] — nội dung file dưới dạng bytes (đọc từ FilePicker)
   ///
   /// Trả về true nếu thành công, false nếu lỗi.
-  Future<bool> uploadFile(String fileName, List<int> fileBytes, {String? notebookId}) async {
+  /// Upload file vào notebook cụ thể.
+  ///
+  /// [notebookId] REQUIRED — mỗi file phải thuộc 1 notebook (document isolation)
+  Future<bool> uploadFile(
+    String fileName,
+    List<int> fileBytes, {
+    required String notebookId,  // REQUIRED — backend yêu cầu
+  }) async {
+    if (notebookId.isEmpty) {
+      _currentStep = 'Lỗi: Chưa chọn notebook';
+      _isUploading = false;
+      notifyListeners();
+      return false;
+    }
+
     _isUploading = true;
     _progress = 0.0;
     _currentFileName = fileName;
@@ -103,11 +117,9 @@ class UploadProvider extends ChangeNotifier {
           fileBytes,
           filename: fileName,
           contentType: contentType,
-        ));
-
-      if (notebookId != null) {
-        request.fields['notebook_id'] = notebookId;
-      }
+        ))
+        // notebook_id REQUIRED — backend yêu cầu document phải thuộc notebook
+        ..fields['notebook_id'] = notebookId;
 
       _currentStep = 'Đang tải lên và trích xuất dữ liệu...';
       notifyListeners();
