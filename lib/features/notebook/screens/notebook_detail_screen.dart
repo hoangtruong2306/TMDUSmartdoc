@@ -530,7 +530,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Tom tat AI',
+                                      'Tóm tắt AI',
                                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                                         color: accent,
                                         fontWeight: FontWeight.w700,
@@ -587,7 +587,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Hoi AI',
+                          'Hỏi AI',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -640,7 +640,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Tai lieu',
+                        'Tài liệu',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -649,7 +649,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                         TextButton.icon(
                           onPressed: _showAddSheet,
                           icon: Icon(Icons.add, size: 16, color: accent),
-                          label: Text('Them', style: TextStyle(color: accent)),
+                          label: Text('Thêm', style: TextStyle(color: accent)),
                         ),
                     ],
                   ),
