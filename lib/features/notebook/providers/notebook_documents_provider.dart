@@ -186,6 +186,41 @@ class NotebookDocumentsProvider extends ChangeNotifier {
     return [];
   }
 
+  /// Gỡ tài liệu khỏi notebook (notebook_id → NULL), giữ file trong hệ thống.
+  /// Trả về số lượng gỡ thành công.
+  Future<int> unassignDocuments(List<String> docIds) async {
+    if (docIds.isEmpty) return 0;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+      final idToken = await user.getIdToken();
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents/unassign'),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'doc_ids': docIds}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        final count = result['unassigned_count'] as int? ?? 0;
+        if (count > 0) {
+          // Xóa khỏi danh sách hiển thị ngay lập tức (optimistic update)
+          _documents.removeWhere((d) => docIds.contains(d.id));
+          _hasLoaded = true; // đánh dấu đã load để không gọi lại
+          notifyListeners();
+        }
+        return count;
+      }
+    } catch (e) {
+      debugPrint('Lỗi gỡ tài liệu khỏi notebook: $e');
+    }
+    return 0;
+  }
+
   /// Gán danh sách documents vào notebook này.
   /// Trả về số lượng tài liệu được gán thành công.
   Future<int> assignDocumentsToNotebook(List<String> docIds) async {

@@ -112,6 +112,55 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
     });
   }
 
+  /// Gỡ tài liệu đã chọn khỏi notebook (giữ file, đặt notebook_id = null).
+  Future<void> _confirmUnassignSelectedDocs() async {
+    if (_selectedDocIds.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
+        title: const Text('Gỡ khỏi notebook?'),
+        content: Text(
+          'Gỡ ${_selectedDocIds.length} tài liệu ra khỏi notebook này.\n'
+          'File vẫn được giữ lại, bạn có thể thêm vào notebook khác sau.',
+          style: Theme.of(ctx).textTheme.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Huỷ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Gỡ ra'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    final count = await _docsProvider.unassignDocuments(_selectedDocIds.toList());
+    if (!mounted) return;
+    if (count > 0) {
+      _clearDocSelection();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã gỡ $count tài liệu khỏi notebook'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gỡ thất bại, thử lại'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _confirmDeleteSelectedDocs() async {
     if (_selectedDocIds.isEmpty) return;
     final confirmed = await showDialog<bool>(
@@ -272,17 +321,44 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                   icon: const Icon(Icons.close),
                   onPressed: _clearDocSelection,
                 ),
-                title: Text('${_selectedDocIds.length} da chon'),
+                title: Text('Đã chọn ${_selectedDocIds.length}'),
                 actions: [
+                  // Gỡ khỏi notebook (giữ file)
+                  TextButton.icon(
+                    onPressed: _selectedDocIds.isEmpty
+                        ? null
+                        : _confirmUnassignSelectedDocs,
+                    icon: Icon(
+                      Icons.folder_off_outlined,
+                      size: 16,
+                      color: _selectedDocIds.isEmpty
+                          ? AppColors.textTertiary
+                          : AppColors.textSecondary,
+                    ),
+                    label: Text(
+                      'Gỡ ra',
+                      style: TextStyle(
+                        color: _selectedDocIds.isEmpty
+                            ? AppColors.textTertiary
+                            : AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  // Xóa vĩnh viễn
                   TextButton(
-                    onPressed: _selectedDocIds.isEmpty ? null : _confirmDeleteSelectedDocs,
+                    onPressed: _selectedDocIds.isEmpty
+                        ? null
+                        : _confirmDeleteSelectedDocs,
                     child: Text(
-                      'Xoa',
+                      'Xóa',
                       style: TextStyle(
                         color: _selectedDocIds.isEmpty
                             ? AppColors.textTertiary
                             : AppColors.error,
                         fontWeight: FontWeight.w600,
+                        fontSize: 13,
                       ),
                     ),
                   ),
