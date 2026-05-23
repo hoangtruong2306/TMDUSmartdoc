@@ -511,8 +511,13 @@ class _ErrorView extends StatelessWidget {
 }
 
 // ── Result Transition ────────────────────────────────────────────────────────
+// Dùng StatefulWidget + initState để:
+//   1. Capture toàn bộ data từ provider TRƯỚC khi bất kỳ clear() nào xảy ra
+//   2. Chỉ navigate đúng 1 lần (flag _navigated) dù provider rebuild nhiều lần
+//   3. Tránh lỗi "Null check operator on null" do _saveSession notifyListeners()
+//      khiến build() chạy lại sau khi deck đã bị clear
 
-class _ResultTransition extends StatelessWidget {
+class _ResultTransition extends StatefulWidget {
   final FlashCardProvider provider;
   final String notebookId;
   final String notebookName;
@@ -524,28 +529,44 @@ class _ResultTransition extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final result = FlashCardResult(
-      cards:    provider.deck!.cards,
-      answers:  Map.from(provider.answers),
-    );
+  State<_ResultTransition> createState() => _ResultTransitionState();
+}
 
-    // Push result screen sau 200ms để动画 mượt
+class _ResultTransitionState extends State<_ResultTransition> {
+  bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Capture tất cả data ngay lập tức — trước khi provider.clear() có cơ hội chạy
+    final deck    = widget.provider.deck;
+    final cards   = deck?.cards ?? [];
+    final isMock  = deck?.isMock ?? false;
+    final answers = Map<int, CardResult?>.from(widget.provider.answers);
+
     Future.delayed(const Duration(milliseconds: 200), () {
-      if (!context.mounted) return;
+      if (!mounted || _navigated) return;
+      _navigated = true;
+
+      final result = FlashCardResult(cards: cards, answers: answers);
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => FlashCardResultScreen(
             result: result,
-            notebookId: notebookId,
-            notebookName: notebookName,
-            isMock: provider.deck!.isMock,
+            notebookId: widget.notebookId,
+            notebookName: widget.notebookName,
+            isMock: isMock,
           ),
         ),
       );
-      provider.clear();
+      widget.provider.clear();
     });
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -7,8 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/constants.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_radius.dart';
 import '../../flashcards/models/flashcard_model.dart';
 
 class FlashCardHistoryScreen extends StatefulWidget {
