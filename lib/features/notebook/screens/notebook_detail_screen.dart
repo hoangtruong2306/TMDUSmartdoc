@@ -964,15 +964,9 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border(
-                          left: BorderSide(color: accent, width: 4),
-                          top: BorderSide(
-                              color: AppColors.border, width: 1),
-                          right: BorderSide(
-                              color: AppColors.border, width: 1),
-                          bottom: BorderSide(
-                              color: AppColors.border, width: 1),
-                        ),
+                        // uniform border — không được mix màu với borderRadius
+                        border: Border.all(
+                            color: AppColors.border, width: 1),
                         boxShadow: [
                           BoxShadow(
                             color: accent.withValues(alpha: 0.08),
@@ -981,8 +975,25 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                           ),
                         ],
                       ),
-                      padding: const EdgeInsets.all(16),
-                      child: _buildSummarySection(nb, accent, context),
+                      // Left accent bar qua ClipRRect + Row (same pattern as _DocListTile)
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(width: 4, color: accent),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: _buildSummarySection(
+                                      nb, accent, context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
