@@ -227,97 +227,153 @@ class _ChatScreenState extends State<ChatScreen> {
     final isLoadingHistory = chatProvider.isLoadingHistory;
     final horizontalPadding = AppBreakpoints.horizontalPadding(context);
 
+    // Hiển thị welcome hero khi chỉ có 1 tin nhắn chào (và chưa chọn ngữ cảnh)
+    final hasContext = chatProvider.activeDocId != null ||
+        chatProvider.activeNotebookId != null;
+    final showWelcome =
+        !isLoadingHistory && messages.length == 1 && !hasContext;
+
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF5F8FE),
       endDrawer: _buildConversationsDrawer(context),
+
+      // ── AppBar ──────────────────────────────────────────────────────────────
       appBar: AppBar(
-        title: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.auto_awesome, color: AppColors.primary),
-              AppSpacing.hSm,
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'SmartDoc AI',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (chatProvider.activeNotebookName != null)
-                      Text(
-                        '📚 ${chatProvider.activeNotebookName!}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    else if (chatProvider.activeDocTitle != null)
-                      Text(
-                        chatProvider.activeDocTitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: AppColors.surface.withValues(alpha: 0.92),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleSpacing: 16,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Gradient AI icon
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+                ),
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1565C0).withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.auto_awesome,
+                  color: Colors.white, size: 19),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'SmartDoc AI',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A2E),
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6, height: 6,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF4CAF50),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          chatProvider.activeNotebookName != null
+                              ? '📚 ${chatProvider.activeNotebookName!}'
+                              : chatProvider.activeDocTitle != null
+                                  ? '📄 ${chatProvider.activeDocTitle!}'
+                                  : 'Đang hoạt động',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: chatProvider.activeNotebookName != null ||
+                                    chatProvider.activeDocTitle != null
+                                ? AppColors.primary
+                                : const Color(0xFF4CAF50),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.history_outlined),
-            tooltip: 'Danh sách hội thoại',
+            icon: const Icon(Icons.menu_book_rounded,
+                color: AppColors.textSecondary, size: 22),
+            tooltip: 'Hội thoại',
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
           ),
+          const SizedBox(width: 4),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: AppColors.border),
+        ),
       ),
+
+      // ── Body ────────────────────────────────────────────────────────────────
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: AppSpacing.md,
-                ),
-                itemCount: isLoadingHistory
-                    ? 3
-                    : messages.length + (isTyping ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (isLoadingHistory) {
-                    return ChatBubbleSkeleton(isUser: index == 1)
-                        .appEntrance(delay: AppMotion.stagger(index));
-                  }
-                  if (index == messages.length && isTyping) {
-                    return const TypingIndicator();
-                  }
-                  final message = messages[index];
-                  return (message.isAi
-                          ? AIChatBubble(
-                              text: message.text,
-                              citations: message.citations,
-                            )
-                          : UserChatBubble(text: message.text))
-                      .appEntrance(delay: AppMotion.stagger(index));
-                },
-              ),
+              child: showWelcome
+                  ? _buildWelcomeState(context)
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                        vertical: AppSpacing.md,
+                      ),
+                      itemCount: isLoadingHistory
+                          ? 3
+                          : messages.length + (isTyping ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (isLoadingHistory) {
+                          return ChatBubbleSkeleton(isUser: index == 1)
+                              .appEntrance(
+                                  delay: AppMotion.stagger(index));
+                        }
+                        if (index == messages.length && isTyping) {
+                          return const TypingIndicator();
+                        }
+                        final message = messages[index];
+                        return (message.isAi
+                                ? AIChatBubble(
+                                    text: message.text,
+                                    citations: message.citations,
+                                  )
+                                : UserChatBubble(text: message.text))
+                            .appEntrance(
+                                delay: AppMotion.stagger(index));
+                      },
+                    ),
             ),
             _buildInputArea(context),
           ],
@@ -325,6 +381,148 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  // ── Welcome State ──────────────────────────────────────────────────────────
+
+  Widget _buildWelcomeState(BuildContext context) {
+    final suggestions = [
+      ('Tóm tắt tài liệu của tôi', Icons.summarize_outlined),
+      ('Tạo câu hỏi ôn tập', Icons.quiz_outlined),
+      ('Giải thích khái niệm khó', Icons.lightbulb_outline_rounded),
+      ('Lập kế hoạch học tập', Icons.calendar_today_outlined),
+    ];
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: AppBreakpoints.horizontalPadding(context),
+        vertical: 28,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            children: [
+              const SizedBox(height: 32),
+
+              // ── Hero icon ────────────────────────────────────────────────
+              Container(
+                width: 84,
+                height: 84,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1565C0).withValues(alpha: 0.32),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.white,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              // ── Title ────────────────────────────────────────────────────
+              const Text(
+                'SmartDoc AI',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A1A2E),
+                  letterSpacing: -0.6,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Trợ lý học tập thông minh dành cho sinh viên TDMU\nHỏi bất cứ điều gì về tài liệu của bạn',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.65,
+                ),
+              ),
+              const SizedBox(height: 36),
+
+              // ── Suggested questions ──────────────────────────────────────
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'GỢI Ý CÂU HỎI',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textTertiary,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: suggestions
+                    .map((s) => _SuggestionChip(
+                          text: s.$1,
+                          icon: s.$2,
+                          onTap: () {
+                            _controller.text = s.$1;
+                            _handleSend(context);
+                          },
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 28),
+
+              // ── Context hint ─────────────────────────────────────────────
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F4FD),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFBBDEFB)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Nhấn nút + ở ô chat để chọn tài liệu hoặc notebook làm nguồn hỏi đáp chính xác hơn',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.primary,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Input Area (pill design) ────────────────────────────────────────────────
 
   Widget _buildInputArea(BuildContext context) {
     final chatProvider = context.watch<ChatProvider>();
@@ -337,15 +535,21 @@ class _ChatScreenState extends State<ChatScreen> {
         : chatProvider.activeDocTitle;
 
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? AppSpacing.sm : AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ).copyWith(
-        bottom: AppSpacing.sm + MediaQuery.of(context).padding.bottom,
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 12 : 16,
+        10,
+        isCompact ? 12 : 16,
+        10 + MediaQuery.of(context).padding.bottom,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        boxShadow: AppShadows.up,
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: Center(
         child: ConstrainedBox(
@@ -354,7 +558,7 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Context chip — hiển thị khi đã chọn tài liệu/notebook
+              // ── Context chip ─────────────────────────────────────────────
               if (hasContext && contextLabel != null) ...[
                 GestureDetector(
                   onTap: () => _showContextPicker(context),
@@ -362,10 +566,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryContainer,
+                      color: const Color(0xFFE3F2FD),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.35),
+                        color: AppColors.primary.withValues(alpha: 0.30),
                       ),
                     ),
                     child: Row(
@@ -382,7 +586,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ConstrainedBox(
                           constraints: BoxConstraints(
                             maxWidth:
-                                MediaQuery.of(context).size.width * 0.55,
+                                MediaQuery.of(context).size.width * 0.52,
                           ),
                           child: Text(
                             contextLabel,
@@ -397,132 +601,154 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         const SizedBox(width: 5),
                         GestureDetector(
-                          onTap: () =>
-                              context.read<ChatProvider>().clearActiveContext(),
+                          onTap: () => context
+                              .read<ChatProvider>()
+                              .clearActiveContext(),
                           child: const Icon(Icons.close_rounded,
-                              size: 14, color: AppColors.primary),
+                              size: 13, color: AppColors.primary),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
               ],
 
-              // Input row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // "+" button — chọn tài liệu
-                  AnimatedContainer(
-                    duration: AppMotion.fast,
-                    decoration: BoxDecoration(
-                      color: hasContext
-                          ? AppColors.primary.withValues(alpha: 0.1)
-                          : AppColors.surfaceVariant,
-                      borderRadius: AppRadius.control,
-                      border: Border.all(
-                        color: hasContext
-                            ? AppColors.primary.withValues(alpha: 0.4)
-                            : AppColors.border,
-                      ),
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        hasContext
-                            ? Icons.swap_horiz_rounded
-                            : Icons.add_rounded,
-                        color: hasContext
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                        size: 22,
-                      ),
-                      padding: const EdgeInsets.all(10),
-                      constraints: const BoxConstraints(
-                          minWidth: 44, minHeight: 44),
-                      onPressed: () => _showContextPicker(context),
-                    ),
+              // ── Pill input container ─────────────────────────────────────
+              AnimatedContainer(
+                duration: AppMotion.fast,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4FA),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: hasContext
+                        ? AppColors.primary.withValues(alpha: 0.30)
+                        : const Color(0xFFDDE3EF),
+                    width: hasContext ? 1.5 : 1.0,
                   ),
-                  AppSpacing.hSm,
-
-                  // Text field
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _handleSend(context),
-                      decoration: InputDecoration(
-                        hintText: chatProvider.activeNotebookName != null
-                            ? 'Hỏi về notebook...'
-                            : chatProvider.activeDocTitle != null
-                                ? 'Hỏi về tài liệu...'
-                                : 'Nhấn + để chọn tài liệu...',
-                        border: OutlineInputBorder(
-                          borderRadius: AppRadius.control,
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: AppRadius.control,
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: AppRadius.control,
-                          borderSide: const BorderSide(
-                            color: AppColors.primary,
-                            width: 1.5,
-                          ),
-                        ),
-                        filled: true,
-                        fillColor: AppColors.surfaceVariant,
-                        contentPadding: AppSpacing.inputPadding,
-                      ),
-                    ),
-                  ),
-                  AppSpacing.hSm,
-
-                  // Voice button — giữ để nói tiếng Việt → tự điền + gửi
-                  _VoiceButton(
-                    onResult: (text) {
-                      if (text.isEmpty) return;
-                      _controller.text = text;
-                      HapticFeedback.lightImpact();
-                      context.read<ChatProvider>().sendMessage(text);
-                      _controller.clear();
-                      _scrollToBottom();
-                    },
-                  ),
-                  AppSpacing.hXs,
-
-                  // Send button
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _controller,
-                    builder: (context, value, child) {
-                      final hasText = value.text.trim().isNotEmpty;
-                      return AnimatedContainer(
-                        duration: AppMotion.fast,
-                        curve: AppMotion.curve,
-                        decoration: BoxDecoration(
-                          color: hasText
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // "+" / swap context button
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 2),
+                      child: IconButton(
+                        icon: Icon(
+                          hasContext
+                              ? Icons.swap_horiz_rounded
+                              : Icons.add_rounded,
+                          color: hasContext
                               ? AppColors.primary
-                              : AppColors.surfaceVariant,
-                          shape: BoxShape.circle,
+                              : AppColors.textSecondary,
+                          size: 22,
                         ),
-                        child: IconButton(
-                          icon: Icon(
-                            Icons.arrow_upward_rounded,
-                            color: hasText
-                                ? Colors.white
-                                : AppColors.textTertiary,
+                        padding: const EdgeInsets.all(9),
+                        constraints: const BoxConstraints(
+                            minWidth: 42, minHeight: 42),
+                        tooltip: hasContext ? 'Đổi nguồn' : 'Chọn tài liệu',
+                        onPressed: () => _showContextPicker(context),
+                      ),
+                    ),
+
+                    // Text field — no border, blends into pill
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        minLines: 1,
+                        maxLines: 5,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _handleSend(context),
+                        style: const TextStyle(fontSize: 15, height: 1.4),
+                        decoration: InputDecoration(
+                          hintText: chatProvider.activeNotebookName != null
+                              ? 'Hỏi về notebook...'
+                              : chatProvider.activeDocTitle != null
+                                  ? 'Hỏi về tài liệu...'
+                                  : 'Hỏi bất kỳ điều gì...',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 12),
+                          hintStyle: TextStyle(
+                            color: AppColors.textTertiary,
+                            fontSize: 15,
                           ),
-                          onPressed:
-                              hasText ? () => _handleSend(context) : null,
                         ),
-                      );
-                    },
-                  ),
-                ],
+                      ),
+                    ),
+
+                    // Voice button
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: _VoiceButton(
+                        onResult: (text) {
+                          if (text.isEmpty) return;
+                          _controller.text = text;
+                          HapticFeedback.lightImpact();
+                          context.read<ChatProvider>().sendMessage(text);
+                          _controller.clear();
+                          _scrollToBottom();
+                        },
+                      ),
+                    ),
+
+                    // Send button — gradient when active
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4, bottom: 4),
+                      child: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _controller,
+                        builder: (context, value, child) {
+                          final hasText = value.text.trim().isNotEmpty;
+                          return AnimatedContainer(
+                            duration: AppMotion.fast,
+                            curve: AppMotion.curve,
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              gradient: hasText
+                                  ? const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF2196F3),
+                                        Color(0xFF1565C0),
+                                      ],
+                                    )
+                                  : null,
+                              color: hasText ? null : Colors.transparent,
+                              shape: BoxShape.circle,
+                              boxShadow: hasText
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(0xFF1565C0)
+                                            .withValues(alpha: 0.30),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.arrow_upward_rounded,
+                                color: hasText
+                                    ? Colors.white
+                                    : AppColors.textTertiary,
+                                size: 20,
+                              ),
+                              padding: EdgeInsets.zero,
+                              onPressed:
+                                  hasText ? () => _handleSend(context) : null,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -904,6 +1130,58 @@ class _PickerTile extends StatelessWidget {
               color: AppColors.primary, size: 20)
           : null,
       onTap: onTap,
+    );
+  }
+}
+
+// ── Suggestion chip ─────────────────────────────────────────────────────────
+
+class _SuggestionChip extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _SuggestionChip({
+    required this.text,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFDDE3EF)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: AppColors.primary),
+            const SizedBox(width: 7),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
