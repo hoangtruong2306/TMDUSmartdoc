@@ -252,8 +252,11 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
   }
 
   void _navigateToUpload() {
-    // Dùng route riêng ngoài ShellRoute để tránh duplicate GlobalKey crash
-    context.push('/notebook/${widget.notebookId}/upload');
+    // Dùng route riêng ngoài ShellRoute để tránh duplicate GlobalKey crash.
+    // .then() chạy khi user pop về → refresh danh sách tài liệu ngay lập tức.
+    context.push('/notebook/${widget.notebookId}/upload').then((_) {
+      if (mounted) _docsProvider.refresh();
+    });
   }
 
   /// Mở bottom sheet lịch sử học (Flashcard + Luyện thi) cho notebook này.
@@ -817,25 +820,81 @@ class _DocListTile extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        subtitle: Text(
-          isPdf ? '${doc.pageCount} trang - PDF' : 'Tai lieu',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppColors.textTertiary,
-          ),
-        ),
+        subtitle: doc.isProcessing
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 10, height: 10,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: Colors.orange.shade600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Đang xử lý...',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.orange.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              )
+            : doc.isFailed
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline_rounded,
+                          size: 12, color: AppColors.error),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Xử lý thất bại',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(
+                    isPdf ? '${doc.pageCount} trang · PDF' : 'Tài liệu văn bản',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
         trailing: isSelectionMode
             ? Icon(
                 isSelected ? Icons.check_circle : Icons.circle_outlined,
                 size: 24,
                 color: isSelected ? accent : AppColors.border,
               )
-            : IconButton(
-                icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                color: AppColors.textSecondary,
-                onPressed: () {
-                  // TODO: Open document viewer
-                },
-              ),
+            : doc.isProcessing
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Text(
+                        'Đang xử lý',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    color: AppColors.textSecondary,
+                    onPressed: () {
+                      // TODO: Open document viewer
+                    },
+                  ),
       ),
     ).appEntrance(delay: AppMotion.stagger(index));
   }

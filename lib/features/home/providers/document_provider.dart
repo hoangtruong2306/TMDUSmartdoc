@@ -16,6 +16,7 @@
 //   Sau khi có backend session tracking, thay Map này = API call.
 // =============================================================================
 
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -94,6 +95,12 @@ class DocumentProvider extends ChangeNotifier {
   // In-memory session study counter: docId → count
   // Tăng khi user mở Chat/Quiz từ HomeScreen. Reset khi khởi động lại app.
   final Map<String, int> _studyCounts = {};
+
+  // ── Status polling ────────────────────────────────────────────────────────
+  Timer? _statusPollTimer;
+
+  bool get hasProcessingDocuments =>
+      _allDocs.any((d) => d.status == 'processing');
 
   // Danh sách đầy đủ — khởi tạo mock data để fallback khi backend chưa có
   final List<Document> _allDocs = [
@@ -322,11 +329,71 @@ class DocumentProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+      // Tự động poll nếu có tài liệu đang xử lý
+      _startPollingIfNeeded();
     }
   }
 
   Future<void> refresh() async {
+    _statusPollTimer?.cancel();
     _hasLoaded = false;
     await loadDocuments();
+  }
+
+  // ── Status polling ────────────────────────────────────────────────────────
+
+  void _startPollingIfNeeded() {
+    if (!hasProcessingDocuments) return;
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!hasProcessingDocuments) {
+        _statusPollTimer?.cancel();
+        return;
+      }
+      _pollStatuses();
+    });
+  }
+
+  /// Chỉ cập nhật field status — không reset toàn bộ danh sách.
+  Future<void> _pollStatuses() async {
+    if (AppConstants.backendBaseUrl.contains('your-backend')) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.get(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents'),
+        headers: {'Authorization': 'Bearer $idToken'},
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return;
+
+      final data = json.decode(res.body) as List<dynamic>;
+      bool changed = false;
+
+      for (final raw in data) {
+        final id        = raw['id']?.toString() ?? '';
+        final newStatus = raw['status'] as String? ?? 'ready';
+        final idx = _allDocs.indexWhere((d) => d.id == id);
+        if (idx >= 0 && _allDocs[idx].status != newStatus) {
+          final old = _allDocs[idx];
+          _allDocs[idx] = Document(
+            id: old.id, title: old.title,
+            pageCount: old.pageCount, createdAt: old.createdAt,
+            type: old.type, status: newStatus,
+            notebookId: old.notebookId,
+          );
+          changed = true;
+        }
+      }
+
+      if (changed) notifyListeners();
+      if (!hasProcessingDocuments) _statusPollTimer?.cancel();
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _statusPollTimer?.cancel();
+    super.dispose();
   }
 }

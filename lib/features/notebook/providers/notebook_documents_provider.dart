@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ class NotebookDocument {
   final int pageCount;
   final DateTime createdAt;
   final String? notebookId; // null nếu chưa được gán vào notebook nào
+  final String status;      // 'processing' | 'ready' | 'failed'
 
   NotebookDocument({
     required this.id,
@@ -20,7 +22,18 @@ class NotebookDocument {
     this.pageCount = 0,
     required this.createdAt,
     this.notebookId,
+    this.status = 'ready',
   });
+
+  bool get isProcessing => status == 'processing';
+  bool get isFailed     => status == 'failed';
+  bool get isReady      => status == 'ready';
+
+  NotebookDocument copyWithStatus(String newStatus) => NotebookDocument(
+    id: id, title: title, type: type,
+    pageCount: pageCount, createdAt: createdAt,
+    notebookId: notebookId, status: newStatus,
+  );
 }
 
 /// Bộ quản lý danh sách tài liệu trong notebook.
@@ -32,8 +45,14 @@ class NotebookDocumentsProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasLoaded = false;
 
+  // ── Status polling ────────────────────────────────────────────────────────
+  Timer? _statusPollTimer;
+
   List<NotebookDocument> get documents => _documents;
   bool get isLoading => _isLoading;
+
+  /// true khi có ít nhất 1 tài liệu chưa xử lý xong.
+  bool get hasProcessingDocuments => _documents.any((d) => d.isProcessing);
 
   Future<void> loadDocuments() async {
     if (_hasLoaded || _isLoading) return;
@@ -63,12 +82,13 @@ class NotebookDocumentsProvider extends ChangeNotifier {
         _documents.clear();
         for (var doc in data) {
           _documents.add(NotebookDocument(
-            id: doc['id']?.toString() ?? '',
-            title: doc['title'] ?? 'Không có tiêu đề',
-            type: doc['type'] ?? 'pdf',
-            pageCount: doc['page_count'] ?? 0,
-            createdAt: DateTime.tryParse(doc['created_at'] ?? '') ?? DateTime.now(),
+            id:         doc['id']?.toString() ?? '',
+            title:      doc['title'] ?? 'Không có tiêu đề',
+            type:       doc['type'] ?? 'pdf',
+            pageCount:  doc['page_count'] ?? 0,
+            createdAt:  DateTime.tryParse(doc['created_at'] ?? '') ?? DateTime.now(),
             notebookId: doc['notebook_id']?.toString(),
+            status:     doc['status'] as String? ?? 'ready',
           ));
         }
       }
@@ -79,6 +99,56 @@ class NotebookDocumentsProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+      // Tự động poll nếu có tài liệu đang xử lý
+      _startPollingIfNeeded();
+    }
+  }
+
+  // ── Status polling ────────────────────────────────────────────────────────
+
+  /// Bắt đầu polling mỗi 4 giây khi có tài liệu đang xử lý.
+  /// Tự dừng khi tất cả đã sẵn sàng.
+  void _startPollingIfNeeded() {
+    if (!hasProcessingDocuments) return;
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!hasProcessingDocuments) {
+        _statusPollTimer?.cancel();
+        return;
+      }
+      _pollStatuses();
+    });
+  }
+
+  /// Fetch nhẹ — chỉ cập nhật field `status`, không reset loading state.
+  Future<void> _pollStatuses() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.get(
+        Uri.parse('${AppConstants.backendBaseUrl}/documents?notebook_id=$notebookId'),
+        headers: {'Authorization': 'Bearer $idToken'},
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return;
+
+      final data = json.decode(res.body) as List<dynamic>;
+      bool changed = false;
+
+      for (final raw in data) {
+        final id        = raw['id']?.toString() ?? '';
+        final newStatus = raw['status'] as String? ?? 'ready';
+        final idx = _documents.indexWhere((d) => d.id == id);
+        if (idx >= 0 && _documents[idx].status != newStatus) {
+          _documents[idx] = _documents[idx].copyWithStatus(newStatus);
+          changed = true;
+        }
+      }
+
+      if (changed) notifyListeners();
+      if (!hasProcessingDocuments) _statusPollTimer?.cancel();
+    } catch (_) {
+      // Ignore poll errors — will retry on next tick
     }
   }
 
@@ -259,7 +329,14 @@ class NotebookDocumentsProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    _statusPollTimer?.cancel();
     _hasLoaded = false;
     await loadDocuments();
+  }
+
+  @override
+  void dispose() {
+    _statusPollTimer?.cancel();
+    super.dispose();
   }
 }
