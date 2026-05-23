@@ -32,13 +32,6 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // ── Patrol: chạy test với PatrolJUnitRunner + Orchestrator ──────────
-        testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
-        testInstrumentationRunnerArguments["clearPackageData"] = "true"
-    }
-
-    testOptions {
-        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     buildTypes {
@@ -54,9 +47,3 @@ flutter {
     source = "../.."
 }
 
-// ── Patrol: Orchestrator để chạy test độc lập, clear state giữa các test ──
-// Lưu ý: patrol Android library tự động nhúng qua Flutter plugin (Pub Cache)
-// KHÔNG cần khai báo androidTestImplementation("pl.leancode.patrol:patrol")
-dependencies {
-    androidTestUtil("androidx.test:orchestrator:1.4.2")
-}
