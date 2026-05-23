@@ -76,14 +76,16 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
     _docsProvider = NotebookDocumentsProvider(notebookId: widget.notebookId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _docsProvider.loadDocuments();
-      // Khởi tạo state dựa vào summary hiện tại
+      // Khởi tạo state dựa vào summary hiện tại — phải dùng setState để rebuild
       final nbs = context.read<NotebookProvider>().notebooks;
       final idx = nbs.indexWhere((n) => n.id == widget.notebookId);
       if (idx >= 0) {
-        _prevSummary  = nbs[idx].summary;
-        _summaryState = nbs[idx].summary.isNotEmpty
-            ? _SummaryState.ready
-            : _SummaryState.idle;
+        setState(() {
+          _prevSummary  = nbs[idx].summary;
+          _summaryState = nbs[idx].summary.isNotEmpty
+              ? _SummaryState.ready
+              : _SummaryState.idle;
+        });
       }
       _startSummaryPolling();
     });
@@ -370,12 +372,21 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
   // ── Summary section widgets ────────────────────────────────────────────────
 
   Widget _buildSummarySection(Notebook nb, Color accent, BuildContext context) {
-    // Guard: nếu state = ready nhưng summary bị xóa → lùi về idle
-    final effectiveState = (_summaryState == _SummaryState.ready ||
-            _summaryState == _SummaryState.justDone) &&
-        nb.summary.isEmpty
-        ? _SummaryState.idle
-        : _summaryState;
+    // Guard: xác định state hiển thị thực tế
+    //  • summary có data + state = idle  → hiển thị ready (tránh ẩn khi vừa mở)
+    //  • summary có data + state khác    → giữ nguyên (processing, justDone, ready)
+    //  • summary trống  + state processing → giữ processing
+    //  • summary trống  + state khác     → idle
+    final _SummaryState effectiveState;
+    if (nb.summary.isNotEmpty) {
+      effectiveState = _summaryState == _SummaryState.idle
+          ? _SummaryState.ready
+          : _summaryState;
+    } else {
+      effectiveState = _summaryState == _SummaryState.processing
+          ? _SummaryState.processing
+          : _SummaryState.idle;
+    }
 
     switch (effectiveState) {
       case _SummaryState.processing:
