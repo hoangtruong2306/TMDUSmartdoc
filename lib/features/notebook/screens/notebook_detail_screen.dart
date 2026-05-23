@@ -1255,21 +1255,27 @@ class _DocListTile extends StatelessWidget {
             ? accent.withValues(alpha: 0.04)
             : AppColors.surfaceElevated,
         borderRadius: AppRadius.card,
-        border: Border(
-          left: BorderSide(color: accent, width: 3),
-          top: BorderSide(
-              color: isSelected ? accent : AppColors.border,
-              width: isSelected ? 1.5 : 1),
-          right: BorderSide(
-              color: isSelected ? accent : AppColors.border,
-              width: isSelected ? 1.5 : 1),
-          bottom: BorderSide(
-              color: isSelected ? accent : AppColors.border,
-              width: isSelected ? 1.5 : 1),
+        border: Border.all(
+          color: isSelected ? accent : AppColors.border,
+          width: isSelected ? 1.5 : 1,
         ),
         boxShadow: AppShadows.card,
       ),
-      child: ListTile(
+      // ClipRRect + IntrinsicHeight + Row để tạo left accent bar
+      // mà không vi phạm quy tắc borderRadius + non-uniform border
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(
+          AppRadius.card.topLeft.x - 1,
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left accent bar
+              Container(width: 3, color: accent),
+              // Main content
+              Expanded(
+                child: ListTile(
         contentPadding: AppSpacing.cardPaddingCompact,
         onTap: onTap,
         onLongPress: onLongPress,
@@ -1370,8 +1376,13 @@ class _DocListTile extends StatelessWidget {
                       // TODO: Open document viewer
                     },
                   ),
-      ),
-    ).appEntrance(delay: AppMotion.stagger(index));
+              ),   // closes ListTile
+            ),     // closes Expanded
+          ],       // closes Row children
+        ),         // closes Row
+      ),           // closes IntrinsicHeight
+    ),             // closes ClipRRect
+  ).appEntrance(delay: AppMotion.stagger(index));
   }
 }
 
