@@ -102,57 +102,23 @@ class DocumentProvider extends ChangeNotifier {
   bool get hasProcessingDocuments =>
       _allDocs.any((d) => d.status == 'processing');
 
-  // Danh sách đầy đủ — khởi tạo mock data để fallback khi backend chưa có
-  final List<Document> _allDocs = [
-    Document(
-      id: '1',
-      title: 'Chương 1: Giới thiệu về Kinh tế học',
-      pageCount: 24,
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      type: 'pdf',
-      status: 'ready',
-    ),
-    Document(
-      id: '2',
-      title: 'Cơ bản về Học máy (Machine Learning)',
-      pageCount: 45,
-      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-      type: 'pdf',
-      status: 'processing',
-    ),
-    Document(
-      id: '3',
-      title: 'Kiến trúc Mạng Nơ-ron Nhân tạo',
-      pageCount: 12,
-      createdAt: DateTime.now().subtract(const Duration(days: 1, hours: 3)),
-      type: 'txt',
-      status: 'ready',
-    ),
-    Document(
-      id: '4',
-      title: 'Tổng quan về Thị giác Máy tính',
-      pageCount: 30,
-      createdAt: DateTime.now().subtract(const Duration(days: 3)),
-      type: 'pdf',
-      status: 'ready',
-    ),
-    Document(
-      id: '5',
-      title: 'Xử lý Ngôn ngữ Tự nhiên và ứng dụng',
-      pageCount: 56,
-      createdAt: DateTime.now().subtract(const Duration(days: 5)),
-      type: 'pdf',
-      status: 'failed',
-    ),
-    Document(
-      id: '6',
-      title: 'Học tăng cường — Lý thuyết và thực hành',
-      pageCount: 18,
-      createdAt: DateTime.now().subtract(const Duration(days: 38)),
-      type: 'pdf',
-      status: 'ready',
-    ),
-  ];
+  // Danh sách đầy đủ — bắt đầu rỗng, load từ backend theo user đã đăng nhập
+  final List<Document> _allDocs = [];
+
+  // ── Auth isolation ────────────────────────────────────────────────────────
+  // Theo dõi uid hiện tại để phát hiện khi user đổi (login/logout/switch)
+  String? _currentUid;
+
+  DocumentProvider() {
+    // Lắng nghe thay đổi auth state — tự động clear data khi user đổi
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      final newUid = user?.uid;
+      if (newUid != _currentUid) {
+        _currentUid = newUid;
+        _clearUserData();
+      }
+    });
+  }
 
   // ── Getters ──────────────────────────────────────────────────────────────────
 
@@ -207,6 +173,19 @@ class DocumentProvider extends ChangeNotifier {
   /// Cập nhật từ khoá tìm kiếm và rebuild danh sách ngay lập tức.
   void setSearchQuery(String query) {
     _searchQuery = query;
+    notifyListeners();
+  }
+
+  // ── Auth clear ────────────────────────────────────────────────────────────────
+
+  /// Xóa toàn bộ data của user cũ. Gọi khi uid thay đổi (login/logout/switch).
+  void _clearUserData() {
+    _statusPollTimer?.cancel();
+    _allDocs.clear();
+    _studyCounts.clear();
+    _hasLoaded   = false;
+    _isLoading   = false;
+    _searchQuery = '';
     notifyListeners();
   }
 

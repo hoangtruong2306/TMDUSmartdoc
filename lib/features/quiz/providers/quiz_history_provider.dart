@@ -19,6 +19,7 @@
 //   - clearDetail() để reset màn hình review khi thoát
 // =============================================================================
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -36,6 +37,21 @@ class QuizHistoryProvider extends ChangeNotifier {
   QuizSessionDetail? _sessionDetail;
   bool    _isLoadingDetail = false;
   String? _detailError;
+
+  // ── Auth isolation ─────────────────────────────────────────────────────────
+  String? _currentUid;
+  late final StreamSubscription<User?> _authSub;
+
+  QuizHistoryProvider() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      final newUid = user?.uid;
+      if (newUid != _currentUid) {
+        _currentUid = newUid;
+        clearHistory();
+        clearDetail();
+      }
+    });
+  }
 
   // ── Getters ────────────────────────────────────────────────────────────────
   List<QuizSession>  get sessions        => List.unmodifiable(_sessions);
@@ -140,5 +156,11 @@ class QuizHistoryProvider extends ChangeNotifier {
     _detailError     = null;
     _isLoadingDetail = false;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }

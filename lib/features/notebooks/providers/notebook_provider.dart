@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +38,21 @@ class NotebookProvider extends ChangeNotifier {
   final List<Notebook> _notebooks = [];
   bool _isLoading = false;
   bool _hasLoaded = false;
+
+  // ── Auth isolation ────────────────────────────────────────────────────────
+  String? _currentUid;
+  // ignore: unused_field  (subscription kept alive in memory)
+  late final StreamSubscription<User?> _authSub;
+
+  NotebookProvider() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      final newUid = user?.uid;
+      if (newUid != _currentUid) {
+        _currentUid = newUid;
+        clear();
+      }
+    });
+  }
 
   List<Notebook> get notebooks => _notebooks;
   bool get isLoading => _isLoading;
@@ -204,6 +220,13 @@ class NotebookProvider extends ChangeNotifier {
   void clear() {
     _notebooks.clear();
     _hasLoaded = false;
+    _isLoading = false;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }
