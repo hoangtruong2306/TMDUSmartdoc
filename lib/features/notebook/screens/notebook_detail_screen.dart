@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constants.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../notebooks/providers/notebook_provider.dart';
 import '../../chat/providers/chat_provider.dart';
+import '../../flashcards/models/flashcard_model.dart';
+import '../../quiz/models/quiz_model.dart';
 import '../providers/notebook_documents_provider.dart';
 
 // ── Icon data helpers ─────────────────────────────────────────────────────────
@@ -253,6 +256,29 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
     context.push('/notebook/${widget.notebookId}/upload');
   }
 
+  /// Mở bottom sheet lịch sử học (Flashcard + Luyện thi) cho notebook này.
+  void _showHistorySheet(
+    BuildContext context, {
+    required String notebookId,
+    required String notebookName,
+    required Color accent,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _NotebookHistorySheet(
+        notebookId: notebookId,
+        notebookName: notebookName,
+        accent: accent,
+      ),
+    );
+  }
+
   /// Mở bottom sheet cho phép user chọn tài liệu đã upload để thêm vào notebook.
   void _showAddSheet() {
     final notebookProvider = context.read<NotebookProvider>();
@@ -393,6 +419,18 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                     ),
                   ],
                 ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.history_rounded),
+                    tooltip: 'Lịch sử học',
+                    onPressed: () => _showHistorySheet(
+                      context,
+                      notebookId: widget.notebookId,
+                      notebookName: nb.name,
+                      accent: accent,
+                    ),
+                  ),
+                ],
               ),
         // ── Bottom action bar: Chat với AI + Luyện thi ────────────────────────
         // ── Bottom action bar: Chat AI | Flashcard | Luyện thi ─────────────────
@@ -1261,6 +1299,553 @@ class _DocumentPickerSheetState extends State<_DocumentPickerSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// _NotebookHistorySheet — Bottom sheet lịch sử học của notebook
+// =============================================================================
+// 2 tab: Flashcard | Luyện thi
+// Mỗi tab load session list từ backend (hoặc mock nếu chưa có).
+// Tap vào session quiz → navigate đến QuizHistoryScreen để xem chi tiết.
+
+class _NotebookHistorySheet extends StatefulWidget {
+  final String notebookId;
+  final String notebookName;
+  final Color  accent;
+
+  const _NotebookHistorySheet({
+    required this.notebookId,
+    required this.notebookName,
+    required this.accent,
+  });
+
+  @override
+  State<_NotebookHistorySheet> createState() => _NotebookHistorySheetState();
+}
+
+class _NotebookHistorySheetState extends State<_NotebookHistorySheet>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
+
+  // ── Flashcard history state ─────────────────────────────────────────────────
+  List<FlashCardSession> _flashSessions = [];
+  bool    _flashLoading = true;
+
+  // ── Quiz history state ──────────────────────────────────────────────────────
+  List<QuizSession> _quizSessions = [];
+  bool    _quizLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _loadFlashHistory();
+    _loadQuizHistory();
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Load flashcard history ──────────────────────────────────────────────────
+
+  Future<void> _loadFlashHistory() async {
+    setState(() => _flashLoading = true);
+    try {
+      if (AppConstants.backendBaseUrl.contains('your-backend') ||
+          !AppConstants.backendBaseUrl.contains('onrender.com')) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        _flashSessions = _mockFlashSessions();
+      } else {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw Exception('Chưa đăng nhập');
+        final idToken = await user.getIdToken();
+        final res = await http.get(
+          Uri.parse('${AppConstants.backendBaseUrl}/flashcards/history/${widget.notebookId}'),
+          headers: {'Authorization': 'Bearer $idToken'},
+        ).timeout(const Duration(seconds: 8));
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body) as List;
+          _flashSessions = data
+              .map((e) => FlashCardSession.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } else {
+          _flashSessions = _mockFlashSessions();
+        }
+      }
+    } catch (_) {
+      _flashSessions = _mockFlashSessions();
+    } finally {
+      if (mounted) setState(() => _flashLoading = false);
+    }
+  }
+
+  Future<void> _loadQuizHistory() async {
+    setState(() => _quizLoading = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Chưa đăng nhập');
+      final idToken = await user.getIdToken();
+      final uri = Uri.parse('${AppConstants.backendBaseUrl}/quiz/history')
+          .replace(queryParameters: {
+        'notebook_id': widget.notebookId,
+        'limit': '20',
+      });
+      final res = await http
+          .get(uri, headers: {'Authorization': 'Bearer $idToken'})
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body) as List;
+        _quizSessions = data
+            .map((e) => QuizSession.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } else {
+        _quizSessions = _mockQuizSessions();
+      }
+    } catch (_) {
+      _quizSessions = _mockQuizSessions();
+    } finally {
+      if (mounted) setState(() => _quizLoading = false);
+    }
+  }
+
+  // ── Mock data ───────────────────────────────────────────────────────────────
+
+  List<FlashCardSession> _mockFlashSessions() => [
+    FlashCardSession(
+      id: 'f1', notebookId: widget.notebookId,
+      notebookName: widget.notebookName,
+      deckTitle: 'Flashcards: ${widget.notebookName}',
+      totalCards: 20, masteredCount: 14,
+      reviewCount: 4, skippedCount: 2,
+      scorePct: 70, isMock: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+    ),
+    FlashCardSession(
+      id: 'f2', notebookId: widget.notebookId,
+      notebookName: widget.notebookName,
+      deckTitle: 'Flashcards: ${widget.notebookName}',
+      totalCards: 10, masteredCount: 6,
+      reviewCount: 3, skippedCount: 1,
+      scorePct: 60, isMock: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
+    ),
+  ];
+
+  List<QuizSession> _mockQuizSessions() => [
+    QuizSession(
+      id: 'q1', notebookId: widget.notebookId,
+      notebookName: widget.notebookName,
+      difficulty: 'medium', totalQuestions: 10,
+      correctCount: 8, scorePct: 80, isMock: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 2)),
+    ),
+    QuizSession(
+      id: 'q2', notebookId: widget.notebookId,
+      notebookName: widget.notebookName,
+      difficulty: 'hard', totalQuestions: 15,
+      correctCount: 9, scorePct: 60, isMock: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+    ),
+  ];
+
+  // ── Build ───────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (ctx, scrollController) => Column(
+        children: [
+          // ── Handle ─────────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // ── Header ─────────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: widget.accent.withValues(alpha: 0.1),
+                    borderRadius: AppRadius.control,
+                  ),
+                  child: Icon(Icons.history_rounded, color: widget.accent, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Lịch sử học',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        widget.notebookName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Tab bar ─────────────────────────────────────────────────────────
+          Container(
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: TabBar(
+              controller: _tabCtrl,
+              indicatorColor: widget.accent,
+              labelColor: widget.accent,
+              unselectedLabelColor: AppColors.textSecondary,
+              labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              tabs: const [
+                Tab(icon: Icon(Icons.style_rounded, size: 16), text: 'Flashcard'),
+                Tab(icon: Icon(Icons.quiz_rounded, size: 16), text: 'Luyện thi'),
+              ],
+            ),
+          ),
+
+          // ── Tab views ───────────────────────────────────────────────────────
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: [
+                // ── Tab 1: Flashcard history ───────────────────────────────
+                _flashLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _flashSessions.isEmpty
+                        ? _EmptyHistoryTab(
+                            icon: Icons.style_rounded,
+                            label: 'Chưa có lịch sử Flashcard',
+                            hint: 'Hoàn thành bộ thẻ đầu tiên\nđể xem kết quả tại đây.',
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadFlashHistory,
+                            child: ListView.builder(
+                              controller: scrollController,
+                              padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 16),
+                              itemCount: _flashSessions.length,
+                              itemBuilder: (_, i) => _FlashSessionCard(
+                                session: _flashSessions[i],
+                                accent: widget.accent,
+                              ),
+                            ),
+                          ),
+
+                // ── Tab 2: Quiz history ────────────────────────────────────
+                _quizLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _quizSessions.isEmpty
+                        ? _EmptyHistoryTab(
+                            icon: Icons.quiz_rounded,
+                            label: 'Chưa có lịch sử Luyện thi',
+                            hint: 'Hoàn thành bài kiểm tra đầu tiên\nđể xem kết quả tại đây.',
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadQuizHistory,
+                            child: ListView.builder(
+                              controller: scrollController,
+                              padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 16),
+                              itemCount: _quizSessions.length,
+                              itemBuilder: (_, i) => _QuizSessionCard(
+                                session: _quizSessions[i],
+                                accent: widget.accent,
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  context.push(
+                                    '/quiz/history/${widget.notebookId}'
+                                    '?name=${Uri.encodeComponent(widget.notebookName)}',
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Flash Session Card ────────────────────────────────────────────────────────
+
+class _FlashSessionCard extends StatelessWidget {
+  final FlashCardSession session;
+  final Color accent;
+  const _FlashSessionCard({required this.session, required this.accent});
+
+  Color get _scoreColor {
+    if (session.scorePct >= 80) return const Color(0xFF4CAF50);
+    if (session.scorePct >= 60) return const Color(0xFFFFA726);
+    return const Color(0xFFEF5350);
+  }
+
+  String get _scoreLabel {
+    if (session.scorePct >= 80) return 'Xuất sắc';
+    if (session.scorePct >= 60) return 'Khá tốt';
+    return 'Cần ôn thêm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: AppRadius.control,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          // Score circle
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: _scoreColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: _scoreColor.withValues(alpha: 0.3), width: 1.5),
+            ),
+            child: Center(
+              child: Text(
+                '${session.scorePct}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: _scoreColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        session.deckTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _scoreColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _scoreLabel,
+                        style: TextStyle(fontSize: 10, color: _scoreColor, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${session.totalCards} thẻ · ✓ ${session.masteredCount} thuộc · ↺ ${session.reviewCount} ôn lại',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  DateFormat('dd/MM/yyyy HH:mm').format(session.createdAt),
+                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Quiz Session Card ─────────────────────────────────────────────────────────
+
+class _QuizSessionCard extends StatelessWidget {
+  final QuizSession session;
+  final Color accent;
+  final VoidCallback onTap;
+  const _QuizSessionCard({
+    required this.session,
+    required this.accent,
+    required this.onTap,
+  });
+
+  Color get _scoreColor {
+    if (session.scorePct >= 80) return const Color(0xFF4CAF50);
+    if (session.scorePct >= 60) return const Color(0xFFFFA726);
+    return const Color(0xFFEF5350);
+  }
+
+  String get _scoreLabel {
+    if (session.scorePct >= 80) return 'Xuất sắc';
+    if (session.scorePct >= 60) return 'Khá tốt';
+    return 'Cần ôn thêm';
+  }
+
+  String get _difficultyLabel {
+    switch (session.difficulty) {
+      case 'easy':   return 'Dễ';
+      case 'hard':   return 'Khó';
+      default:       return 'Trung bình';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: AppRadius.control,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.control,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              // Score circle
+              Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  color: _scoreColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _scoreColor.withValues(alpha: 0.3), width: 1.5),
+                ),
+                child: Center(
+                  child: Text(
+                    '${session.scorePct}%',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: _scoreColor,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            session.notebookName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _scoreColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _scoreLabel,
+                            style: TextStyle(fontSize: 10, color: _scoreColor, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${session.correctCount}/${session.totalQuestions} câu · $_difficultyLabel',
+                      style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      DateFormat('dd/MM/yyyy HH:mm').format(session.createdAt),
+                      style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Empty History Tab ─────────────────────────────────────────────────────────
+
+class _EmptyHistoryTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String hint;
+  const _EmptyHistoryTab({
+    required this.icon,
+    required this.label,
+    required this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 52, color: AppColors.textTertiary.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hint,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+            ),
+          ],
+        ),
       ),
     );
   }
