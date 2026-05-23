@@ -121,51 +121,72 @@ class AIChatBubble extends StatelessWidget {
                     Clipboard.setData(ClipboardData(text: text));
                     HapticFeedback.mediumImpact();
                   },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF0F7FF),
-                      borderRadius: BorderRadius.only(
-                        topLeft:     Radius.circular(4),
-                        topRight:    Radius.circular(18),
-                        bottomLeft:  Radius.circular(18),
-                        bottomRight: Radius.circular(18),
-                      ),
-                      border: Border(
-                        left:   BorderSide(color: AppColors.primary, width: 3),
-                        top:    BorderSide(color: Color(0xFFBBDEFB), width: 1),
-                        right:  BorderSide(color: Color(0xFFBBDEFB), width: 1),
-                        bottom: BorderSide(color: Color(0xFFBBDEFB), width: 1),
-                      ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft:     Radius.circular(4),
+                      topRight:    Radius.circular(18),
+                      bottomLeft:  Radius.circular(18),
+                      bottomRight: Radius.circular(18),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          text,
-                          style: const TextStyle(
-                            color: Color(0xFF1A1A2E),
-                            fontSize: 14,
-                            height: 1.65,
-                          ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F7FF),
+                        borderRadius: const BorderRadius.only(
+                          topLeft:     Radius.circular(4),
+                          topRight:    Radius.circular(18),
+                          bottomLeft:  Radius.circular(18),
+                          bottomRight: Radius.circular(18),
                         ),
-                        if (citations.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            height: 1,
-                            color: const Color(0xFFBBDEFB),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: citations
-                                .map((c) => CitationChip(citation: c))
-                                .toList(),
-                          ),
-                        ],
-                      ],
+                        border: Border.all(
+                          color: const Color(0xFFBBDEFB),
+                          width: 1,
+                        ),
+                      ),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              width: 3,
+                              color: AppColors.primary,
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      text,
+                                      style: const TextStyle(
+                                        color: Color(0xFF1A1A2E),
+                                        fontSize: 14,
+                                        height: 1.65,
+                                      ),
+                                    ),
+                                    if (citations.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        height: 1,
+                                        color: const Color(0xFFBBDEFB),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: citations
+                                            .map((c) => CitationChip(citation: c))
+                                            .toList(),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -275,25 +296,45 @@ class TypingIndicator extends StatelessWidget {
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 13),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF0F7FF),
-                  borderRadius: BorderRadius.only(
-                    topLeft:     Radius.circular(4),
-                    topRight:    Radius.circular(18),
-                    bottomLeft:  Radius.circular(18),
-                    bottomRight: Radius.circular(18),
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft:     Radius.circular(4),
+                  topRight:    Radius.circular(18),
+                  bottomLeft:  Radius.circular(18),
+                  bottomRight: Radius.circular(18),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F7FF),
+                    borderRadius: const BorderRadius.only(
+                      topLeft:     Radius.circular(4),
+                      topRight:    Radius.circular(18),
+                      bottomLeft:  Radius.circular(18),
+                      bottomRight: Radius.circular(18),
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFFBBDEFB),
+                      width: 1,
+                    ),
                   ),
-                  border: Border(
-                    left:   BorderSide(color: AppColors.primary, width: 3),
-                    top:    BorderSide(color: Color(0xFFBBDEFB), width: 1),
-                    right:  BorderSide(color: Color(0xFFBBDEFB), width: 1),
-                    bottom: BorderSide(color: Color(0xFFBBDEFB), width: 1),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          width: 3,
+                          color: AppColors.primary,
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 13),
+                          child: _BouncingDots(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                child: const _BouncingDots(),
               ),
             ],
           ),
