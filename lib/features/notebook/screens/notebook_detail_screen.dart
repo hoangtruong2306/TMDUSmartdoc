@@ -1015,43 +1015,53 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                           spacing: 8,
                           runSpacing: 8,
                           children: nb.suggestions.take(4).map((s) {
-                            return GestureDetector(
-                              onTap: () => _onSuggestionTap(s),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: accent.withValues(alpha: 0.30),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black
-                                          .withValues(alpha: 0.04),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                            return ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth:
+                                    MediaQuery.of(context).size.width * 0.80,
+                              ),
+                              child: GestureDetector(
+                                onTap: () => _onSuggestionTap(s),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: accent.withValues(alpha: 0.30),
                                     ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                        Icons.chat_bubble_outline_rounded,
-                                        size: 13,
-                                        color: accent),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      s,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: accent,
-                                        fontWeight: FontWeight.w600,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.04),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                          Icons.chat_bubble_outline_rounded,
+                                          size: 13,
+                                          color: accent),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          s,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: accent,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
