@@ -627,37 +627,45 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                 ],
               )
             : AppBar(
-                backgroundColor: accent,
-                foregroundColor: Colors.white,
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                foregroundColor: AppColors.textPrimary,
                 elevation: 0,
+                scrolledUnderElevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded),
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: AppColors.primary),
                   onPressed: () => context.pop(),
                 ),
                 title: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: AppRadius.control,
+                        color: accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(_iconForKey(nb.icon), size: 18, color: Colors.white),
+                      child: Icon(_iconForKey(nb.icon), size: 17, color: accent),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
+                    const SizedBox(width: 8),
+                    Flexible(
                       child: Text(
                         nb.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A2E),
+                        ),
                       ),
                     ),
                   ],
                 ),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.history_rounded),
+                    icon: Icon(Icons.history_rounded, color: accent),
                     tooltip: 'Lịch sử học',
                     onPressed: () => _showHistorySheet(
                       context,
@@ -667,6 +675,10 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                     ),
                   ),
                 ],
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(height: 1, color: AppColors.border),
+                ),
               ),
         // ── Bottom action bar: Chat với AI + Luyện thi ────────────────────────
         // ── Bottom action bar: Chat AI | Flashcard | Luyện thi ─────────────────
@@ -674,35 +686,64 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
         bottomNavigationBar: _isSelectionMode
             ? null
             : Container(
-                color: AppColors.surface,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 16,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
                 padding: EdgeInsets.fromLTRB(
-                  12,
-                  10,
-                  12,
+                  14, 10, 14,
                   MediaQuery.of(context).padding.bottom + 10,
                 ),
                 child: Row(
                   children: [
-                    // ── Chat với AI ──────────────────────────────────────────
+                    // ── Chat với AI — gradient fill ────────────────────────
                     Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _onChatTap,
-                        icon: const Icon(Icons.chat_bubble_rounded, size: 15),
-                        label: const Text(
-                          'Chat AI',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                      flex: 5,
+                      child: Container(
+                        height: 46,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
                           ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1565C0)
+                                  .withValues(alpha: 0.28),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(46),
-                          backgroundColor: accent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: AppRadius.control,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _onChatTap,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.chat_bubble_rounded,
+                                    size: 15, color: Colors.white),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Chat AI',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -710,6 +751,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                     const SizedBox(width: 8),
                     // ── Flashcard ────────────────────────────────────────────
                     Expanded(
+                      flex: 4,
                       child: OutlinedButton.icon(
                         onPressed: () => context.push(
                           '/flashcards/${widget.notebookId}'
@@ -729,9 +771,10 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                           minimumSize: const Size.fromHeight(46),
                           foregroundColor: accent,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
-                          side: BorderSide(color: accent),
+                          side: BorderSide(
+                              color: accent.withValues(alpha: 0.5)),
                           shape: RoundedRectangleBorder(
-                            borderRadius: AppRadius.control,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                       ),
@@ -739,6 +782,7 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                     const SizedBox(width: 8),
                     // ── Luyện thi ────────────────────────────────────────────
                     Expanded(
+                      flex: 4,
                       child: OutlinedButton.icon(
                         onPressed: () => context.push(
                           '/quiz/${widget.notebookId}'
@@ -758,9 +802,10 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                           minimumSize: const Size.fromHeight(46),
                           foregroundColor: accent,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
-                          side: BorderSide(color: accent),
+                          side: BorderSide(
+                              color: accent.withValues(alpha: 0.5)),
                           shape: RoundedRectangleBorder(
-                            borderRadius: AppRadius.control,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                       ),
@@ -773,100 +818,283 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Summary Section ─────────────────────────────────────────────
+              // ── Hero Banner ──────────────────────────────────────────────────
               SliverToBoxAdapter(
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeInOut,
-                  child: Container(
-                    width: double.infinity,
-                    color: accent.withValues(alpha: 0.06),
-                    child: Padding(
-                      padding: pagePadding.copyWith(
-                        top: AppSpacing.lg,
-                        bottom: AppSpacing.lg,
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        accent,
+                        Color.lerp(accent, Colors.black, 0.18)!,
+                      ],
+                    ),
+                  ),
+                  padding: pagePadding.copyWith(
+                    top: AppSpacing.lg,
+                    bottom: AppSpacing.lg,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Large icon
+                      Container(
+                        width: 60, height: 60,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.20),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.15),
+                          ),
+                        ),
+                        child: Icon(
+                          _iconForKey(nb.icon),
+                          size: 28,
+                          color: Colors.white,
+                        ),
                       ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nb.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                height: 1.2,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Consumer<NotebookDocumentsProvider>(
+                              builder: (ctx, docs, _) => Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.article_outlined,
+                                            size: 12, color: Colors.white),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${docs.documents.length} tài liệu',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (nb.summary.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.18),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.auto_awesome,
+                                              size: 11, color: Colors.white),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'AI đã tóm tắt',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Summary Card ─────────────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: pagePadding.copyWith(
+                    top: AppSpacing.md,
+                    bottom: 0,
+                  ),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeInOut,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border(
+                          left: BorderSide(color: accent, width: 4),
+                          top: BorderSide(
+                              color: AppColors.border, width: 1),
+                          right: BorderSide(
+                              color: AppColors.border, width: 1),
+                          bottom: BorderSide(
+                              color: AppColors.border, width: 1),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(alpha: 0.08),
+                            blurRadius: 12,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
                       child: _buildSummarySection(nb, accent, context),
                     ),
                   ),
                 ),
               ),
 
-              // ── Suggestion Chips ────────────────────────────────────────────
+              // ── Suggestion Chips ─────────────────────────────────────────────
               if (nb.suggestions.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: pagePadding.copyWith(
                       top: AppSpacing.lg,
-                      bottom: AppSpacing.md,
+                      bottom: AppSpacing.sm,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Hỏi AI',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 3, height: 14,
+                              decoration: BoxDecoration(
+                                color: accent,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Hỏi AI nhanh',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 10),
                         Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                          spacing: 8,
+                          runSpacing: 8,
                           children: nb.suggestions.take(4).map((s) {
-                            return ActionChip(
-                              avatar: Icon(Icons.chat_bubble_outline_rounded,
-                                  size: 14, color: accent),
-                              label: Text(
-                                s,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: accent,
-                                  fontWeight: FontWeight.w500,
+                            return GestureDetector(
+                              onTap: () => _onSuggestionTap(s),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: accent.withValues(alpha: 0.30),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black
+                                          .withValues(alpha: 0.04),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                        Icons.chat_bubble_outline_rounded,
+                                        size: 13,
+                                        color: accent),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      s,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              backgroundColor: accent.withValues(alpha: 0.06),
-                              side: BorderSide(
-                                color: accent.withValues(alpha: 0.2),
-                                width: 1,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              onPressed: () => _onSuggestionTap(s),
                             );
                           }).toList(),
-                        ).appEntrance(delay: const Duration(milliseconds: 100)),
+                        ).appEntrance(
+                            delay: const Duration(milliseconds: 100)),
                       ],
                     ),
                   ),
                 ),
 
-              // ── Documents Header ────────────────────────────────────────────
+              // ── Documents Header ──────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.only(
                     left: pagePadding.left,
                     right: pagePadding.right,
-                    top: AppSpacing.md,
+                    top: AppSpacing.lg,
                     bottom: AppSpacing.sm,
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      Container(
+                        width: 3, height: 14,
+                        decoration: BoxDecoration(
+                          color: accent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
                         'Tài liệu',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const Spacer(),
                       if (!_isSelectionMode)
                         TextButton.icon(
                           onPressed: _showAddSheet,
                           icon: Icon(Icons.add, size: 16, color: accent),
-                          label: Text('Thêm', style: TextStyle(color: accent)),
+                          label:
+                              Text('Thêm', style: TextStyle(color: accent)),
                         ),
                     ],
                   ),
@@ -1013,11 +1241,21 @@ class _DocListTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       decoration: BoxDecoration(
-        color: isSelected ? accent.withValues(alpha: 0.05) : AppColors.surfaceElevated,
+        color: isSelected
+            ? accent.withValues(alpha: 0.04)
+            : AppColors.surfaceElevated,
         borderRadius: AppRadius.card,
-        border: Border.all(
-          color: isSelected ? accent : AppColors.border,
-          width: isSelected ? 1.5 : 1,
+        border: Border(
+          left: BorderSide(color: accent, width: 3),
+          top: BorderSide(
+              color: isSelected ? accent : AppColors.border,
+              width: isSelected ? 1.5 : 1),
+          right: BorderSide(
+              color: isSelected ? accent : AppColors.border,
+              width: isSelected ? 1.5 : 1),
+          bottom: BorderSide(
+              color: isSelected ? accent : AppColors.border,
+              width: isSelected ? 1.5 : 1),
         ),
         boxShadow: AppShadows.card,
       ),

@@ -6,24 +6,42 @@ import '../../shared/widgets/widgets.dart';
 import 'providers/notebook_provider.dart';
 import '../chat/providers/chat_provider.dart';
 
-// Danh sách icon đại diện cho từng lĩnh vực học thuật
+// =============================================================================
+// NOTEBOOKS SCREEN — TDMU SmartDoc redesign
+// Màu chủ đạo: TDMU Blue #1565C0
+// Card: gradient header (accent) + body trắng, footer badge AI + gợi ý
+// AppBar: trắng, brand icon gradient, nút "Tạo mới" pill xanh
+// =============================================================================
+
+// ── Icon palette ──────────────────────────────────────────────────────────────
+
 const _nbIcons = <(String, IconData, String)>[
-  ('school',     Icons.school_rounded,             'Tổng quát'),
-  ('book',       Icons.menu_book_rounded,           'Văn học'),
-  ('science',    Icons.science_rounded,             'Khoa học'),
-  ('math',       Icons.calculate_rounded,           'Toán'),
-  ('economics',  Icons.trending_up_rounded,         'Kinh tế'),
-  ('computer',   Icons.computer_rounded,            'Công nghệ'),
-  ('medical',    Icons.medical_services_rounded,    'Y tế'),
-  ('history',    Icons.history_edu_rounded,         'Lịch sử'),
-  ('art',        Icons.palette_rounded,             'Nghệ thuật'),
-  ('language',   Icons.translate_rounded,           'Ngoại ngữ'),
-  ('law',        Icons.gavel_rounded,               'Pháp luật'),
-  ('idea',       Icons.lightbulb_rounded,           'Ý tưởng'),
+  ('school',    Icons.school_rounded,             'Tổng quát'),
+  ('book',      Icons.menu_book_rounded,           'Văn học'),
+  ('science',   Icons.science_rounded,             'Khoa học'),
+  ('math',      Icons.calculate_rounded,           'Toán'),
+  ('economics', Icons.trending_up_rounded,         'Kinh tế'),
+  ('computer',  Icons.computer_rounded,            'Công nghệ'),
+  ('medical',   Icons.medical_services_rounded,    'Y tế'),
+  ('history',   Icons.history_edu_rounded,         'Lịch sử'),
+  ('art',       Icons.palette_rounded,             'Nghệ thuật'),
+  ('language',  Icons.translate_rounded,           'Ngoại ngữ'),
+  ('law',       Icons.gavel_rounded,               'Pháp luật'),
+  ('idea',      Icons.lightbulb_rounded,           'Ý tưởng'),
 ];
 
 IconData _iconFromKey(String key) =>
     _nbIcons.firstWhere((e) => e.$1 == key, orElse: () => _nbIcons.first).$2;
+
+Color _parseColor(String hex) {
+  try {
+    return Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
+  } catch (_) {
+    return const Color(0xFF1565C0);
+  }
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class NotebooksScreen extends StatefulWidget {
   const NotebooksScreen({super.key});
@@ -109,11 +127,11 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
 
   Future<void> _showCreateDialog() async {
     final nameController = TextEditingController();
-    String selectedColor = '#6750A4';
+    String selectedColor = '#1565C0'; // TDMU Blue mặc định
     String selectedIcon = 'school';
     const colors = [
-      '#6750A4', '#006874', '#7D5260', '#B1416B',
-      '#386A20', '#984716',
+      '#1565C0', '#006874', '#7D5260',
+      '#B1416B', '#386A20', '#984716',
     ];
 
     await showDialog<void>(
@@ -125,14 +143,16 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
           final provider = context.read<NotebookProvider>();
           final messenger = ScaffoldMessenger.of(context);
           Navigator.of(ctx).pop();
-          final nb = await provider.createNotebook(name, selectedColor, selectedIcon);
+          final nb = await provider.createNotebook(
+              name, selectedColor, selectedIcon);
           if (nb == null && context.mounted) {
             messenger.showSnackBar(
               SnackBar(
                 content: const Text('Tạo notebook thất bại'),
                 backgroundColor: AppColors.error,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: AppRadius.control),
+                shape:
+                    RoundedRectangleBorder(borderRadius: AppRadius.control),
                 margin: const EdgeInsets.all(AppSpacing.md),
               ),
             );
@@ -143,26 +163,56 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
           builder: (ctx, setModalState) => AlertDialog(
             backgroundColor: AppColors.surface,
             shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
-            title: const Text('Tạo notebook mới'),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            contentPadding:
+                const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.create_new_folder_rounded,
+                      size: 20, color: AppColors.primary),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Tạo notebook mới',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 4),
+                  // ── Tên notebook ────────────────────────────────────
                   TextField(
                     controller: nameController,
                     autofocus: true,
                     onSubmitted: (_) => submit(),
                     decoration: InputDecoration(
                       hintText: 'Tên notebook...',
-                      border: OutlineInputBorder(borderRadius: AppRadius.control),
+                      prefixIcon: const Icon(
+                        Icons.drive_file_rename_outline_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
+                      border: OutlineInputBorder(
+                          borderRadius: AppRadius.control),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: AppRadius.control,
-                        borderSide: BorderSide(color: AppColors.border),
+                        borderSide:
+                            const BorderSide(color: AppColors.border),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: AppRadius.control,
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        borderSide: const BorderSide(
+                            color: AppColors.primary, width: 1.5),
                       ),
                       filled: true,
                       fillColor: AppColors.surfaceVariant,
@@ -170,82 +220,115 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
                     ),
                   ),
                   AppSpacing.vMd,
-                  Text('Màu sắc', style: Theme.of(ctx).textTheme.labelMedium),
+
+                  // ── Màu sắc ─────────────────────────────────────────
+                  Text(
+                    'Màu sắc',
+                    style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   AppSpacing.vSm,
                   Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: colors.map((hex) {
                       final color = _parseColor(hex);
                       final selected = hex == selectedColor;
                       return GestureDetector(
-                        onTap: () => setModalState(() => selectedColor = hex),
+                        onTap: () =>
+                            setModalState(() => selectedColor = hex),
                         child: AnimatedContainer(
                           duration: AppMotion.fast,
-                          width: 36,
-                          height: 36,
+                          width: 38,
+                          height: 38,
                           decoration: BoxDecoration(
                             color: color,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: selected ? AppColors.textPrimary : Colors.transparent,
+                              color: selected
+                                  ? AppColors.textPrimary
+                                  : Colors.transparent,
                               width: 2.5,
                             ),
-                            boxShadow: selected ? AppShadows.card : null,
+                            boxShadow: selected
+                                ? [
+                                    BoxShadow(
+                                      color:
+                                          color.withValues(alpha: 0.45),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 3),
+                                    )
+                                  ]
+                                : null,
                           ),
                           child: selected
-                              ? const Icon(Icons.check, color: Colors.white, size: 18)
+                              ? const Icon(Icons.check,
+                                  color: Colors.white, size: 18)
                               : null,
                         ),
                       );
                     }).toList(),
                   ),
                   AppSpacing.vMd,
-                  Text('Biểu tượng', style: Theme.of(ctx).textTheme.labelMedium),
+
+                  // ── Biểu tượng ──────────────────────────────────────
+                  Text(
+                    'Biểu tượng',
+                    style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   AppSpacing.vSm,
                   Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: _nbIcons.map((entry) {
                       final selected = entry.$1 == selectedIcon;
                       final accent = _parseColor(selectedColor);
                       return GestureDetector(
-                        onTap: () => setModalState(() => selectedIcon = entry.$1),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedContainer(
-                              duration: AppMotion.fast,
-                              width: 42,
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: selected ? accent : AppColors.surfaceVariant,
-                                borderRadius: AppRadius.control,
-                                border: Border.all(
-                                  color: selected ? accent : AppColors.border,
-                                  width: 1.5,
-                                ),
+                        onTap: () =>
+                            setModalState(() => selectedIcon = entry.$1),
+                        child: Tooltip(
+                          message: entry.$3,
+                          child: AnimatedContainer(
+                            duration: AppMotion.fast,
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? accent
+                                  : AppColors.surfaceVariant,
+                              borderRadius: AppRadius.control,
+                              border: Border.all(
+                                color: selected ? accent : AppColors.border,
+                                width: 1.5,
                               ),
-                              child: Icon(
-                                entry.$2,
-                                size: 20,
-                                color: selected ? Colors.white : AppColors.textSecondary,
-                              ),
+                              boxShadow: selected
+                                  ? [
+                                      BoxShadow(
+                                        color: accent.withValues(alpha: 0.30),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      )
+                                    ]
+                                  : null,
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              entry.$3,
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: selected ? accent : AppColors.textTertiary,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                              ),
+                            child: Icon(
+                              entry.$2,
+                              size: 22,
+                              color: selected
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
                             ),
-                          ],
+                          ),
                         ),
                       );
                     }).toList(),
                   ),
+                  const SizedBox(height: 4),
                 ],
               ),
             ),
@@ -256,7 +339,15 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
               ),
               FilledButton(
                 onPressed: submit,
-                child: const Text('Tạo'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.control),
+                ),
+                child: const Text(
+                  'Tạo notebook',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -301,41 +392,132 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<NotebookProvider>();
     final pagePadding = AppBreakpoints.pagePadding(context);
+    final nbCount = provider.notebooks.length;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF5F8FE),
+
+      // ── AppBar ────────────────────────────────────────────────────────────
       appBar: _isSelectionMode
           ? AppBar(
               backgroundColor: AppColors.surface,
+              surfaceTintColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: _clearSelection,
               ),
-              title: Text('${_selectedIds.length} đã chọn'),
+              title: Text(
+                '${_selectedIds.length} đã chọn',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
               actions: [
                 TextButton(
-                  onPressed: _selectedIds.isEmpty ? null : _confirmDeleteSelected,
+                  onPressed:
+                      _selectedIds.isEmpty ? null : _confirmDeleteSelected,
                   child: Text(
                     'Xoá',
                     style: TextStyle(
-                      color: _selectedIds.isEmpty ? AppColors.textTertiary : AppColors.error,
+                      color: _selectedIds.isEmpty
+                          ? AppColors.textTertiary
+                          : AppColors.error,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Container(height: 1, color: AppColors.border),
+              ),
             )
-          : null,
-      floatingActionButton: _isSelectionMode
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _showCreateDialog,
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Tạo mới', style: TextStyle(fontWeight: FontWeight.w600)),
-            ).appScaleIn(delay: const Duration(milliseconds: 300)),
+          : AppBar(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              titleSpacing: 16,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Brand icon gradient
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1565C0).withValues(alpha: 0.28),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.auto_stories_rounded,
+                        color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Notebooks',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1A1A2E),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      if (nbCount > 0)
+                        Text(
+                          '$nbCount notebook',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textTertiary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: FilledButton.icon(
+                    onPressed: _showCreateDialog,
+                    icon: const Icon(Icons.add_rounded, size: 17),
+                    label: const Text(
+                      'Tạo mới',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 0),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Container(height: 1, color: AppColors.border),
+              ),
+            ),
+
+      // ── Body ─────────────────────────────────────────────────────────────
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.primary,
@@ -343,27 +525,6 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: pagePadding,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Notebooks',
-                        style: Theme.of(context).textTheme.displaySmall
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ).appEntrance(),
-                      AppSpacing.vXs,
-                      Text(
-                        'Gom nhóm tài liệu và nhận tóm tắt từ AI.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ).appEntrance(delay: const Duration(milliseconds: 60)),
-                      AppSpacing.vLg,
-                    ],
-                  ),
-                ),
-              ),
               if (provider.isLoading)
                 _buildSkeletonGrid(pagePadding)
               else if (provider.notebooks.isEmpty)
@@ -373,25 +534,29 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
                 )
               else
                 SliverPadding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: pagePadding.horizontal / 2,
-                  ).copyWith(bottom: AppSpacing.xxl * 2),
+                  padding: EdgeInsets.fromLTRB(
+                    pagePadding.left,
+                    16,
+                    pagePadding.right,
+                    AppSpacing.xxl * 2,
+                  ),
                   sliver: SliverLayoutBuilder(
                     builder: (context, constraints) {
                       final cols = AppBreakpoints.documentGridColumns(
-                        constraints.crossAxisExtent,
-                      );
+                          constraints.crossAxisExtent);
                       return SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: cols,
-                          mainAxisSpacing: AppSpacing.md,
-                          crossAxisSpacing: AppSpacing.md,
-                          childAspectRatio: 1.05,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.88,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
                             final nb = provider.notebooks[index];
-                            final isSelected = _selectedIds.contains(nb.id);
+                            final isSelected =
+                                _selectedIds.contains(nb.id);
                             return _NotebookCard(
                               notebook: nb,
                               index: index,
@@ -399,19 +564,24 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
                               isSelected: isSelected,
                               onTap: _isSelectionMode
                                   ? () => _toggleSelection(nb.id)
-                                  : () => context.push('/notebook/${nb.id}'),
-                              onLongPress: () => _toggleSelection(nb.id),
+                                  : () => context
+                                      .push('/notebook/${nb.id}'),
+                              onLongPress: () =>
+                                  _toggleSelection(nb.id),
                               onDelete: () => _confirmDelete(nb),
                               onChat: () {
                                 if (!context.mounted) return;
                                 try {
-                                  context.read<ChatProvider>().setActiveNotebook(
-                                    nb.id,
-                                    notebookName: nb.name,
-                                  );
+                                  context
+                                      .read<ChatProvider>()
+                                      .setActiveNotebook(nb.id,
+                                          notebookName: nb.name);
                                 } catch (_) {}
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  if (context.mounted) context.go('/chat');
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (context.mounted) {
+                                    context.go('/chat');
+                                  }
                                 });
                               },
                             );
@@ -431,16 +601,18 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
 
   SliverPadding _buildSkeletonGrid(EdgeInsets pagePadding) {
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: pagePadding.horizontal / 2),
+      padding:
+          EdgeInsets.fromLTRB(pagePadding.left, 16, pagePadding.right, 0),
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
-          final cols = AppBreakpoints.documentGridColumns(constraints.crossAxisExtent);
+          final cols = AppBreakpoints.documentGridColumns(
+              constraints.crossAxisExtent);
           return SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
-              mainAxisSpacing: AppSpacing.md,
-              crossAxisSpacing: AppSpacing.md,
-              childAspectRatio: 1.05,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.88,
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) => const DocumentCardSkeleton()
@@ -451,14 +623,6 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
         },
       ),
     );
-  }
-}
-
-Color _parseColor(String hex) {
-  try {
-    return Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-  } catch (_) {
-    return const Color(0xFF6750A4);
   }
 }
 
@@ -492,125 +656,199 @@ class _NotebookCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isSelected ? nbColor.withValues(alpha: 0.08) : AppColors.surfaceElevated,
+        color: AppColors.surface,
         borderRadius: AppRadius.card,
         border: Border.all(
           color: isSelected ? nbColor : AppColors.border,
-          width: isSelected ? 2 : 1,
+          width: isSelected ? 2.0 : 1.0,
         ),
-        boxShadow: AppShadows.card,
+        boxShadow: [
+          BoxShadow(
+            color: isSelected
+                ? nbColor.withValues(alpha: 0.20)
+                : Colors.black.withValues(alpha: 0.05),
+            blurRadius: isSelected ? 14 : 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: AppRadius.card,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: AppRadius.card,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Colored header strip
-              Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  color: nbColor,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: AppSpacing.cardPaddingCompact,
-                  child: Column(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(
+          AppRadius.card.topLeft.x - (isSelected ? 1.0 : 0),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Gradient header ──────────────────────────────────
+                Container(
+                  height: 82,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        nbColor,
+                        Color.lerp(nbColor, Colors.black, 0.20)!,
+                      ],
+                    ),
+                  ),
+                  padding:
+                      const EdgeInsets.fromLTRB(12, 12, 10, 10),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? nbColor.withValues(alpha: 0.2)
-                                  : nbColor.withValues(alpha: 0.12),
-                              borderRadius: AppRadius.control,
-                            ),
-                            child: isSelected
-                                ? Icon(Icons.check, size: 18, color: nbColor)
-                                : Icon(
-                                    _iconFromKey(notebook.icon),
-                                    size: 18,
-                                    color: nbColor,
-                                  ),
-                          ),
-                          const Spacer(),
-                          if (!isSelectionMode)
-                            IconButton(
-                              icon: const Icon(Icons.more_vert, size: 18),
-                              color: AppColors.textSecondary,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                              onPressed: () => _showOptions(context),
-                            )
-                          else
-                            Icon(
-                              isSelected ? Icons.check_circle : Icons.circle_outlined,
-                              size: 22,
-                              color: isSelected ? nbColor : AppColors.border,
-                            ),
-                        ],
-                      ),
-                      AppSpacing.vSm,
-                      Text(
-                        notebook.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          height: 1.2,
+                      // Icon badge
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color:
+                              Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: isSelected
+                            ? const Icon(Icons.check_rounded,
+                                size: 20, color: Colors.white)
+                            : Icon(
+                                _iconFromKey(notebook.icon),
+                                size: 20,
+                                color: Colors.white,
+                              ),
                       ),
-                      if (hasSummary) ...[
-                        AppSpacing.vXs,
-                        Expanded(
-                          child: Text(
-                            notebook.summary,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ] else
-                        const Spacer(),
-                      if (notebook.suggestions.isNotEmpty)
+                      const Spacer(),
+                      // Selection toggle / options
+                      if (isSelectionMode)
                         Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.lightbulb_outline_rounded,
-                                size: 13,
-                                color: nbColor,
-                              ),
-                              AppSpacing.hXs,
-                              Text(
-                                '${notebook.suggestions.length} gợi ý',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: nbColor,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Icon(
+                            isSelected
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            size: 22,
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.white
+                                    .withValues(alpha: 0.55),
+                          ),
+                        )
+                      else
+                        GestureDetector(
+                          onTap: () => _showOptions(context),
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.more_vert_rounded,
+                              size: 20,
+                              color: Colors.white
+                                  .withValues(alpha: 0.80),
+                            ),
                           ),
                         ),
                     ],
                   ),
                 ),
-              ),
-            ],
+
+                // ── Body ─────────────────────────────────────────────
+                Expanded(
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Notebook name
+                        Text(
+                          notebook.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A2E),
+                            height: 1.25,
+                          ),
+                        ),
+
+                        // AI summary snippet
+                        if (hasSummary) ...[
+                          const SizedBox(height: 5),
+                          Expanded(
+                            child: Text(
+                              notebook.summary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: AppColors.textSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ] else
+                          const Spacer(),
+
+                        // Footer: AI badge + suggestion count
+                        Row(
+                          children: [
+                            if (hasSummary) ...[
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: nbColor
+                                      .withValues(alpha: 0.12),
+                                  borderRadius:
+                                      BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.auto_awesome,
+                                        size: 9, color: nbColor),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      'AI',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: nbColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (notebook.suggestions.isNotEmpty) ...[
+                              Icon(
+                                Icons.lightbulb_outline_rounded,
+                                size: 11,
+                                color: AppColors.textTertiary,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${notebook.suggestions.length} gợi ý',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textTertiary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -628,32 +866,112 @@ class _NotebookCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Drag handle
             Container(
-              width: 36,
-              height: 4,
+              width: 36, height: 4,
               margin: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
+            // Notebook identity row
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          notebook.flutterColor,
+                          Color.lerp(
+                              notebook.flutterColor, Colors.black, 0.2)!,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      _iconFromKey(notebook.icon),
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      notebook.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+
+            // Chat option
             ListTile(
-              leading: Icon(Icons.delete_outline, color: AppColors.error),
-              title: Text('Xoá notebook', style: TextStyle(color: AppColors.error)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.chat_bubble_rounded,
+                    color: AppColors.primary, size: 18),
+              ),
+              title: const Text(
+                'Chat với notebook',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              subtitle: const Text('Hỏi đáp AI về toàn bộ tài liệu'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                  size: 14, color: AppColors.textTertiary),
               onTap: () {
                 Navigator.of(context).pop();
-                WidgetsBinding.instance.addPostFrameCallback((_) => onDelete());
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => onChat());
               },
             ),
+
+            // Delete option
             ListTile(
-              leading: const Icon(Icons.chat_bubble_outline_rounded),
-              title: const Text('Chat với notebook này'),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.delete_outline_rounded,
+                    color: AppColors.error, size: 18),
+              ),
+              title: Text(
+                'Xoá notebook',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.error),
+              ),
+              subtitle: const Text('Tài liệu bên trong vẫn được giữ lại'),
               onTap: () {
                 Navigator.of(context).pop();
-                WidgetsBinding.instance.addPostFrameCallback((_) => onChat());
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => onDelete());
               },
             ),
-            AppSpacing.vSm,
+            AppSpacing.vMd,
           ],
         ),
       ),
@@ -675,36 +993,64 @@ class _EmptyNotebooks extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Hero icon with gradient
             Container(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: const BoxDecoration(
-                color: AppColors.primaryContainer,
-                shape: BoxShape.circle,
+              width: 96, height: 96,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1565C0).withValues(alpha: 0.30),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: const Icon(
                 Icons.auto_stories_rounded,
-                size: 48,
-                color: AppColors.primary,
+                size: 44,
+                color: Colors.white,
               ),
             ).appScaleIn(),
             AppSpacing.vLg,
             Text(
               'Chưa có notebook nào',
-              style: Theme.of(context).textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A1A2E),
+              ),
             ).appEntrance(delay: const Duration(milliseconds: 100)),
             AppSpacing.vSm,
             Text(
               'Tạo notebook để nhóm tài liệu theo chủ đề\nvà nhận tóm tắt thông minh từ AI.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.textSecondary),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.65,
+              ),
             ).appEntrance(delay: const Duration(milliseconds: 160)),
             AppSpacing.vXl,
-            CustomButton(
-              label: 'Tạo notebook đầu tiên',
+            // Pill button
+            FilledButton.icon(
               onPressed: onCreate,
-              icon: Icons.add_rounded,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text(
+                'Tạo notebook đầu tiên',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24)),
+              ),
             ).appEntrance(delay: const Duration(milliseconds: 220)),
           ],
         ),
