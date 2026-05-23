@@ -142,10 +142,11 @@ class AIChatBubble extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SelectableText(
+                        Text(
                           text,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textPrimary,
+                          style: const TextStyle(
+                            color: Color(0xFF1A1A2E),
+                            fontSize: 14,
                             height: 1.65,
                           ),
                         ),
@@ -230,8 +231,9 @@ class UserChatBubble extends StatelessWidget {
               ),
               child: Text(
                 text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                style: const TextStyle(
                   color: Colors.white,
+                  fontSize: 14,
                   height: 1.55,
                 ),
               ),
