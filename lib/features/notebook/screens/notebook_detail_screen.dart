@@ -14,6 +14,13 @@ import '../../flashcards/models/flashcard_model.dart';
 import '../../quiz/models/quiz_model.dart';
 import '../providers/notebook_documents_provider.dart';
 
+// ── Summary state ─────────────────────────────────────────────────────────────
+// idle      : chưa có tài liệu nào / chưa bao giờ tóm tắt
+// processing: vừa upload / gán tài liệu — đang chờ AI tóm tắt
+// justDone  : tóm tắt vừa hoàn thành (hiển thị banner 3 giây)
+// ready     : đã có tóm tắt, hiển thị bình thường
+enum _SummaryState { idle, processing, justDone, ready }
+
 // ── Icon data helpers ─────────────────────────────────────────────────────────
 
 final _iconMap = <String, IconData>{
@@ -59,33 +66,66 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
   final Set<String> _selectedDocIds = {};
   Timer? _pollTimer;
 
+  // ── Summary state machine ──────────────────────────────────────────────────
+  _SummaryState _summaryState = _SummaryState.idle;
+  String _prevSummary = ''; // dùng để detect khi summary thay đổi
+
   @override
   void initState() {
     super.initState();
     _docsProvider = NotebookDocumentsProvider(notebookId: widget.notebookId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _docsProvider.loadDocuments();
-      _startPollingIfNeeded();
+      // Khởi tạo state dựa vào summary hiện tại
+      final nbs = context.read<NotebookProvider>().notebooks;
+      final idx = nbs.indexWhere((n) => n.id == widget.notebookId);
+      if (idx >= 0) {
+        _prevSummary  = nbs[idx].summary;
+        _summaryState = nbs[idx].summary.isNotEmpty
+            ? _SummaryState.ready
+            : _SummaryState.idle;
+      }
+      _startSummaryPolling();
     });
   }
 
-  void _startPollingIfNeeded() {
-    final nbs = context.read<NotebookProvider>().notebooks;
-    final idx = nbs.indexWhere((n) => n.id == widget.notebookId);
-    if (idx < 0 || nbs[idx].summary.isNotEmpty) return;
+  /// Bắt đầu / restart vòng polling summary mỗi 4 giây.
+  ///
+  /// [forceProcessing] = true → ngay lập tức hiển thị "đang tóm tắt"
+  /// (gọi sau khi upload hoặc gán thêm tài liệu vào notebook).
+  void _startSummaryPolling({bool forceProcessing = false}) {
+    if (forceProcessing) {
+      setState(() => _summaryState = _SummaryState.processing);
+    } else {
+      // Nếu đã có summary và không force → không cần poll
+      final nbs = context.read<NotebookProvider>().notebooks;
+      final idx = nbs.indexWhere((n) => n.id == widget.notebookId);
+      if (idx >= 0 && nbs[idx].summary.isNotEmpty) return;
+    }
 
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!mounted) {
-        _pollTimer?.cancel();
-        return;
-      }
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (!mounted) { _pollTimer?.cancel(); return; }
+
       await context.read<NotebookProvider>().refresh();
       if (!mounted) return;
-      final updated = context.read<NotebookProvider>().notebooks;
+
+      final updated   = context.read<NotebookProvider>().notebooks;
       final updatedIdx = updated.indexWhere((n) => n.id == widget.notebookId);
-      if (updatedIdx >= 0 && updated[updatedIdx].summary.isNotEmpty) {
+      if (updatedIdx < 0) return;
+
+      final newSummary = updated[updatedIdx].summary;
+
+      // Phát hiện summary vừa xuất hiện hoặc thay đổi
+      if (newSummary.isNotEmpty && newSummary != _prevSummary) {
+        _prevSummary = newSummary;
         _pollTimer?.cancel();
+
+        // Hiển thị banner "Tóm tắt xong!" trong 3 giây rồi chuyển sang ready
+        setState(() => _summaryState = _SummaryState.justDone);
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _summaryState = _SummaryState.ready);
+        });
       }
     });
   }
@@ -253,9 +293,13 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
 
   void _navigateToUpload() {
     // Dùng route riêng ngoài ShellRoute để tránh duplicate GlobalKey crash.
-    // .then() chạy khi user pop về → refresh danh sách tài liệu ngay lập tức.
+    // .then() chạy khi user pop về:
+    //   • refresh danh sách tài liệu ngay lập tức
+    //   • bật trạng thái "đang tóm tắt" + restart polling summary
     context.push('/notebook/${widget.notebookId}/upload').then((_) {
-      if (mounted) _docsProvider.refresh();
+      if (!mounted) return;
+      _docsProvider.refresh();
+      _startSummaryPolling(forceProcessing: true);
     });
   }
 
@@ -314,9 +358,198 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
           Navigator.pop(ctx);
           _navigateToUpload();
         },
-        onAssigned: () => _docsProvider.refresh(),
+        onAssigned: () {
+          _docsProvider.refresh();
+          // Tài liệu mới được gán → backend sẽ tóm tắt lại
+          _startSummaryPolling(forceProcessing: true);
+        },
       ),
     );
+  }
+
+  // ── Summary section widgets ────────────────────────────────────────────────
+
+  Widget _buildSummarySection(Notebook nb, Color accent, BuildContext context) {
+    // Guard: nếu state = ready nhưng summary bị xóa → lùi về idle
+    final effectiveState = (_summaryState == _SummaryState.ready ||
+            _summaryState == _SummaryState.justDone) &&
+        nb.summary.isEmpty
+        ? _SummaryState.idle
+        : _summaryState;
+
+    switch (effectiveState) {
+      case _SummaryState.processing:
+        return _buildSummarizingState(accent, context);
+      case _SummaryState.justDone:
+        return _buildSummaryJustDone(nb.summary, accent, context);
+      case _SummaryState.ready:
+        return _buildSummaryReady(nb.summary, accent, context);
+      case _SummaryState.idle:
+        return _buildSummaryIdle(accent, context);
+    }
+  }
+
+  // ── State: đang tóm tắt ───────────────────────────────────────────────────
+  Widget _buildSummarizingState(Color accent, BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2, color: accent,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'AI đang tóm tắt nội dung...',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: accent, fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Vui lòng đợi trong khi AI phân tích tài liệu',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // Shimmer placeholder lines
+        _ShimmerLine(color: accent),
+        const SizedBox(height: 8),
+        _ShimmerLine(color: accent),
+        const SizedBox(height: 8),
+        _ShimmerLine(color: accent, widthFactor: 0.65),
+      ],
+    );
+  }
+
+  // ── State: tóm tắt vừa xong ───────────────────────────────────────────────
+  Widget _buildSummaryJustDone(String summary, Color accent, BuildContext context) {
+    const green = Color(0xFF4CAF50);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Banner xanh "Tóm tắt xong!"
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: green.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: green.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_rounded, size: 15, color: green),
+              const SizedBox(width: 6),
+              Text(
+                'Tóm tắt xong! AI đã phân tích xong tài liệu.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: green, fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildSummaryRow(summary, accent, context),
+      ],
+    );
+  }
+
+  // ── State: đã có tóm tắt bình thường ─────────────────────────────────────
+  Widget _buildSummaryReady(String summary, Color accent, BuildContext context) {
+    return _buildSummaryRow(summary, accent, context);
+  }
+
+  // ── State: chưa có tóm tắt / chưa có tài liệu ────────────────────────────
+  Widget _buildSummaryIdle(Color accent, BuildContext context) {
+    return Center(
+      child: Column(
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 40,
+            color: accent.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Chưa có tóm tắt AI',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.textTertiary, fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Thêm tài liệu để nhận tóm tắt thông minh từ AI',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    ).appEntrance();
+  }
+
+  // ── Shared summary row (icon + text) ──────────────────────────────────────
+  Widget _buildSummaryRow(String summary, Color accent, BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.auto_awesome, size: 16, color: accent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tóm tắt AI',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: accent, fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                summary,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary, height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).appEntrance();
   }
 
   @override
@@ -542,75 +775,18 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
             slivers: [
               // ── Summary Section ─────────────────────────────────────────────
               SliverToBoxAdapter(
-                child: Container(
-                  width: double.infinity,
-                  color: accent.withValues(alpha: 0.06),
-                  child: Padding(
-                    padding: pagePadding.copyWith(
-                      top: AppSpacing.lg,
-                      bottom: AppSpacing.lg,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (nb.summary.isNotEmpty) ...[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: accent.withValues(alpha: 0.12),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.auto_awesome, size: 16, color: accent),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Tóm tắt AI',
-                                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                        color: accent,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      nb.summary,
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        color: AppColors.textSecondary,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ).appEntrance(),
-                        ] else ...[
-                          Center(
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.lightbulb_outline_rounded,
-                                  size: 40,
-                                  color: accent.withValues(alpha: 0.4),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Chua co tom tat AI',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppColors.textTertiary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ).appEntrance(),
-                        ],
-                      ],
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    width: double.infinity,
+                    color: accent.withValues(alpha: 0.06),
+                    child: Padding(
+                      padding: pagePadding.copyWith(
+                        top: AppSpacing.lg,
+                        bottom: AppSpacing.lg,
+                      ),
+                      child: _buildSummarySection(nb, accent, context),
                     ),
                   ),
                 ),
@@ -751,6 +927,57 @@ class _NotebookDetailScreenState extends State<NotebookDetailScreen> {
                 },
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shimmer Line (dùng trong summary "đang xử lý") ───────────────────────────
+
+class _ShimmerLine extends StatefulWidget {
+  final Color color;
+  /// Tỷ lệ chiều rộng so với parent (0.0 – 1.0). Mặc định 1.0 (full width).
+  final double widthFactor;
+
+  const _ShimmerLine({required this.color, this.widthFactor = 1.0});
+
+  @override
+  State<_ShimmerLine> createState() => _ShimmerLineState();
+}
+
+class _ShimmerLineState extends State<_ShimmerLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => FractionallySizedBox(
+        widthFactor: widget.widthFactor,
+        alignment: Alignment.centerLeft,
+        child: Container(
+          height: 11,
+          decoration: BoxDecoration(
+            color: widget.color.withValues(alpha: 0.06 + 0.09 * _ctrl.value),
+            borderRadius: BorderRadius.circular(6),
           ),
         ),
       ),
